@@ -1,77 +1,89 @@
+import time
+
 from bs4 import BeautifulSoup
-import re
-import scraper.language as language
 import requests
 import os
-from multiprocessing import Process
+import multiprocessing
+
+from scraper.database.database import add_page, add_to_reverse_index
+from scraper.toScrape.scraper import extract_content, get_urls_from_sitemap, url_is_valid
+
+
+def craw_new_urls(urls):
+    with open("./toScrape/alreadyCrawledUrls.txt") as f:
+        already_crawled = f.readlines()
+        urls_to_crawl = [x for x in urls if x not in already_crawled]
+    crawl(urls_to_crawl)
 
 
 # MAIN FUNCTIONALITY
 def scrape(url):
     try:
-        # 1. Make a request
+        # Make a request
         response = requests.get(url)
         soup = BeautifulSoup(response.text, "html.parser")
-        # 2. Get title
-        title = soup.title.string
-        print(title)
-        # 3. Get meta
-        meta = [meta['content'] for meta in soup.findAll(attrs={"name": re.compile(r"description", re.I)})]
-        # 4. Get all divs
-        list_of_divs = soup.findAll('div')
-        # 5. Get all headings
-        list_of_headings = [headlines.text.strip() for headlines in soup.find_all(re.compile('^h[1-6]$'))]
+        # Exctract the info
+        content = extract_content(url, soup)
 
-        # 6. Get all urls
-        urls = [link.get('href') for link in soup.find_all('a')]
-        urls = list(filter(None, urls))
-        add_prefit = lambda x: x if (("http://" in x) or ("https://" in x)) else url + x
-        urls = set(map(add_prefit, urls))
+        # 8. Save results to DB
+        page_id = add_page(content["title"], url)
 
-        # 7. Get all word counts
-        word_count = language.word_count(soup.get_text())
+        # 9.Update the reverse index
+        add_to_reverse_index(content["word_count_dict"].keys(), page_id)
 
         # 8. Crawl new urls
-
         with open("./toScrape/alreadyCrawledUrls.txt", "a") as f:
             f.write(url + "\n")
 
-        urls_to_crawl = []
-        with open("./toScrape/alreadyCrawledUrls.txt") as f:
-            already_crawled = f.readlines()
-            urls_to_crawl = urls_to_crawl + [x for x in urls if x not in already_crawled]
+        time.sleep(10)
+        # craw_new_urls(urls)
+        return content["urls"]
 
-        crawl(urls_to_crawl)
-
-        return urls
-
-    except:
+    except Exception as e:
+        print(e)
         return []
 
 
 def crawl(urls_to_scrape):
-    processes = []
-    # Creating jobs
+    pool = multiprocessing.Pool(4)
     for url in urls_to_scrape:
-        process = Process(target=scrape, args=(url,))
-        processes.append(processes)
-        # Start a new spider
-        process.start()
+        pool.apply_async(scrape, args=(url,))
+    pool.close()
+    pool.join()
 
 
 if __name__ == '__main__':
     # Initial array of URLs to scrape
-    urls_to_scrape = [line.rstrip('\n') for line in open('./toScrape/webpages.txt')]
+    # urls_to_scrape = [line.rstrip('\n') for line in open('./toScrape/data/webpages.txt')]
+    urls_to_scrape = [line.rstrip('\n') for line in open('./toScrape/data/test.txt')]
+    # urls_to_scrape = [line.rstrip('\n') for line in open('./toScrape/data/one_million.txt')]
+
+    # Extract .robots.txt and sitemap.xml info
+
+    print("Starting to extract urls from sitemaps")
+    start_time = time.process_time()
+    discovered_urls_from_sitemaps = list(map(lambda url: get_urls_from_sitemap(url), urls_to_scrape)) + urls_to_scrape
+    discovered_urls_from_sitemaps = [item for sublist in discovered_urls_from_sitemaps for item in sublist]
+    end_time = time.process_time()
+    print("Extraction done in", (end_time - start_time), "seconds")
 
     # Destroy previously crawled sites
     if os.path.exists("./toScrape/alreadyCrawledUrls.txt"):
         os.remove("./toScrape/alreadyCrawledUrls.txt")
 
-    crawl(urls_to_scrape)
+    discovered_urls_from_sitemaps = list(set(discovered_urls_from_sitemaps))
+    discovered_urls_from_sitemaps = list(filter(lambda url: url_is_valid(url), discovered_urls_from_sitemaps))
+
+    print("Starting to scrape", len(discovered_urls_from_sitemaps), "urls")
+    start_time = time.process_time()
+    crawl(discovered_urls_from_sitemaps)
+
+    end_time = time.process_time()
+    print("Scraping done in", (end_time - start_time), "seconds")
 
 """
 #TODO:
-1. Crawl sitemaps
-2. Crawl robots.txt
-3. Send data to db
+1. Send data to db
+2. What page info do we want to save
+3. Crawl pages reqursivly
 """
