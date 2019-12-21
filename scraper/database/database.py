@@ -3,23 +3,22 @@ import ssl
 from pymongo import MongoClient
 
 username = "admin"
-pw = "ES5UFn-_b9v-ue7"
+pw = "syPQkR59Kst7ltg2"
 
-print("Connecting to the client")
 client = MongoClient(
     "mongodb+srv://" + username + ":" + pw + "@gowizcluster0-wsbvt.mongodb.net/test?retryWrites=true&w=majority",
     ssl_cert_reqs=ssl.CERT_NONE, connect=False)
-print("Connection made")
-print("Connecting to the db")
+print("Connected to the client")
 db = client.get_database("Index")
-print("Connection made")
+print("Connected to the db")
 
 
-def add_page(title, url):
+def add_page(title, url, meta):
     global db
     new_page = {
         "title": title,
         "url": url,
+        "meta": meta
     }
     pages = db['pages']
 
@@ -33,18 +32,22 @@ def add_page(title, url):
 
 def add_to_reverse_index(keywords, page_id):
     keywords_document = db['reverse_index']
+    many_new_entries = []
     for keyword in keywords:
-        # TODO: implement updaating
         if keywords_document.find_one({"keyword": keyword}):
             current_pages = keywords_document.find_one({"keyword": keyword})["pages"]
-            current_pages.append(page_id)
-            updates = {
-                "pages": current_pages
-            }
-            keywords_document.update_one({"keyword": keyword}, {"$set": updates})
+            if page_id not in current_pages:
+                current_pages.append(page_id)
+                updates = {
+                    "pages": current_pages
+                }
+                keywords_document.update_one({"keyword": keyword}, {"$set": updates})
+
         else:
             new_entry = {
                 "keyword": keyword,
                 "pages": [page_id],
             }
-            keywords_document.insert_one(new_entry)
+            many_new_entries.append(new_entry)
+
+    keywords_document.insert_many(many_new_entries)
