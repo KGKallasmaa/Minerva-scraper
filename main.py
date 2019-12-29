@@ -27,7 +27,7 @@ if __name__ == '__main__':
     ## Starting the scraper
 
     thread1 = threading.Thread(target=scraper)
-    #threads.append(thread1)
+    threads.append(thread1)
 
     ## Starting the pageranker
 

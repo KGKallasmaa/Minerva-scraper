@@ -10,6 +10,12 @@ rp = urobot.RobotFileParser()
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
+def get_text(soup):
+    for s in soup(['script', 'style']):
+        s.decompose()
+    return ' '.join(soup.stripped_strings)
+
+
 def extract_content(url, soup):
     return_dictionary = \
         {
@@ -22,16 +28,16 @@ def extract_content(url, soup):
         }
 
     try:
-        #   print("Original URL",url)
-        #   print()
         # Get title
         return_dictionary["title"] = soup.title.string
-        # print(return_dictionary["title"])
 
         # Get meta
         meta = [meta['content'] for meta in soup.findAll(attrs={"name": re.compile(r"description", re.I)})]
         if meta:
             return_dictionary["meta"] = meta[0]
+
+        #Get favicion #TODO
+
         # Get all divs
         list_of_divs = soup.findAll('div')
         if list_of_divs:
@@ -49,28 +55,19 @@ def extract_content(url, soup):
         urls = set(map(add_prefit, urls))
 
 
-        # Filter out pages we can vistit for a fiven domain
-        domains_and_urls = dict()
-        for urll in urls:
-            if urll != url:
-                domain = urlparse(urll).netloc
-                domain = "http://" + domain if "http://" in url else "https://" + domain
-                if domain not in domains_and_urls.keys():
-                    domains_and_urls[domain] = robot_url_fetching_check(domain,urls)
+        # TODO:  Filter out pages only our pot can visit
 
-
-        urls = [item for sublist in domains_and_urls.values() for item in sublist]
         urls = list(set(urls))
         if urls:
             return_dictionary["urls"] = urls
+
         # Get all word counts
-        word_count = language.word_count(soup.get_text())
-        #print(word_count)
+        word_count = language.word_count(get_text(soup))
         if word_count:
             return_dictionary["word_count_dict"] = word_count
 
     except Exception as e:
-        print(e)
+        pass
 
     return return_dictionary
 
@@ -96,9 +93,11 @@ def get_urls_from_xml(url):
     extracted_urls = list(filter(lambda url: ".xml" not in url, raw_urls))
     to_be_crawled_urls = list(filter(lambda url: ".xml" in url, raw_urls))
 
-    extracted_urls = extracted_urls + list(filter(lambda url: get_urls_from_xml(url), to_be_crawled_urls))
+    if len(to_be_crawled_urls) > 0:
+        extracted_urls += [get_urls_from_xml(urll) for urll in to_be_crawled_urls]
 
-    return list(map(lambda url: url.replace('\n', '').replace(' ', ''), extracted_urls))
+    return extracted_urls
+
 
 
 def get_urls_from_sitemap(url):
@@ -112,33 +111,26 @@ def get_urls_from_sitemap(url):
     sitemaps = list(filter(lambda line: "Sitemap:" in line, lines))
     sitemaps = list(map(lambda line: line.replace('Sitemap: ', ''), sitemaps))
 
+    # Trying a common setup
     if len(sitemaps) == 0:
-        # Trying a common setup
         sitemaps.append(domain + "/sitemap.xml")
 
-    extracted_urls = [list(filter(None, get_urls_from_xml(sitemap))) for sitemap in sitemaps]
-    extracted_urls = [item for sublist in extracted_urls for item in sublist]
-    return robot_url_fetching_check(domain, extracted_urls)
+    extracted_urls = [get_urls_from_xml(sitemap) for sitemap in sitemaps][0]
 
+    extracted_urls = [item for sublist in extracted_urls for item in sublist]
+    #TODO: implement.We should only crawl pages that we are allowed to
+    return extracted_urls
 
 def robot_url_fetching_check(domain, urls):
     """
     TODO: add aditional support
     1. How many requests reuests can be made per seond?
-
     CHECK for resourses: https://docs.python.org/3/library/urllib.robotparser.html
     """
     forbidden_domains = ["http://analytics.google.com"]
     if domain in forbidden_domains:
         return []
-    results = []
-    try:
-        global rp
-        rp.set_url(domain + "/robots.txt")
-        rp.read()
-        return list(filter(lambda url: rp.can_fetch("*", url), urls))
-    except Exception as e:
-        pass
-        # print("catching errors")
-       # print(e)
-    return results
+    global rp
+    rp.set_url(domain + "/robots.txt")
+    rp.read()
+    return list(filter(lambda url: rp.can_fetch("*", url), urls))
