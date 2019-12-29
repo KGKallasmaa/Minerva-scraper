@@ -1,22 +1,48 @@
-
-
 # TODO: support other languages
-stop_words = [line.rstrip('\n') for line in open('./language/english_stopwords.txt')]
+# TODO: implement lemma support
 
 
-def remove_stop_words(words):
-    return [word for word in words if word not in stop_words]
+
+import numpy as np
+import string
+
+
+def get_suitable_words():
+    from nltk.corpus import stopwords, words
+    stop_words = stopwords.words('english')
+    words.ensure_loaded()
+    a = np.array(words.words())
+    b = np.array(stop_words)
+    return a[~np.isin(a, b)]
+
+
+
+
+def manage_real_words(words):
+    all_words = np.array(words)
+    suitable_values = get_suitable_words()
+    suitable_words_filter = np.in1d(words, suitable_values)
+    return all_words[suitable_words_filter]
+
+
+
+def pre_process(array):
+    # remove punctuation
+    table = str.maketrans('', '', string.punctuation)
+    stripped = [w.translate(table) for w in array]
+    # remove single charactes
+    no_single_char = list(filter(lambda word: len(word) > 1, stripped))
+    # TODO: implement lemmatization
+
+    return no_single_char
 
 
 def word_count(string):
-    my_string = string.lower().split()
-    stopword_free_string = remove_stop_words(my_string)
-
+    my_string = pre_process(np.array(string.lower().split()))
+    results = manage_real_words(my_string)
     my_dict = {}
-    for item in stopword_free_string:
-        if item in my_dict:
-            my_dict[item] += 1
-        else:
-            my_dict[item] = 1
+
+    for i in results:
+        my_dict[i] = my_dict.get(i, 0) + 1
 
     return my_dict
