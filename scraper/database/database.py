@@ -13,21 +13,31 @@ db = client.get_database("Index")
 print("Connected to the db")
 
 
-def add_page(title, url, meta):
+def get_pages():
     global db
+    return list(db['pages'].find())
+
+
+def add_page(title, url, meta, urls):
+    global pages
+    if urls is None:
+        urls = []
+
     new_page = {
         "title": title,
-        "url": url,
-        "meta": meta
+        "page_url": url,  # the url that is used to acces the page
+        "meta": meta,
+        "urls": urls,  # the urls that the page links to
+        "pageRank": 0
     }
     pages = db['pages']
 
     # Is this new page?
-    if pages.find_one({"url": url}):
-        return pages.find_one({"url": url})["_id"]
+    if pages.find_one({"page_url": url}):
+        return pages.find_one({"page_url": url})["_id"]
     else:
         pages.insert_one(new_page)
-        return pages.find_one({"url": url})["_id"]
+        return pages.find_one({"page_url": url})["_id"]
 
 
 def add_to_reverse_index(keywords, page_id):
@@ -50,4 +60,14 @@ def add_to_reverse_index(keywords, page_id):
             }
             many_new_entries.append(new_entry)
 
-    keywords_document.insert_many(many_new_entries)
+    if len(many_new_entries) > 0:
+        keywords_document.insert_many(many_new_entries)
+
+
+def update_pagrank(current_pages, pageranks):
+    pages = db['pages']
+    for i in range(len(pageranks)):
+        updates = {
+            "pageRank": pageranks[i]
+        }
+        pages.update_one({"_id": current_pages[i]["_id"]}, {"$set": updates})
