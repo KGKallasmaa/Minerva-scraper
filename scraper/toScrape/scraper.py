@@ -5,6 +5,8 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import urllib.robotparser as urobot
 import ssl
+import numpy as np
+from tornado import concurrent
 
 rp = urobot.RobotFileParser()
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -16,11 +18,33 @@ def get_text(soup):
     return ' '.join(soup.stripped_strings)
 
 
+def get_favicon(url, soup):
+    domain = urlparse(url).netloc
+    domain = "http://" + domain if "http://" in url else "https://" + domain
+
+    icon_link = soup.find("link", rel="shortcut icon")
+    if icon_link is None:
+        icon_link = soup.find("link", rel="icon")
+    if icon_link is None:
+        return domain + '/favicon.ico'
+    result = icon_link["href"]
+
+    if url_is_valid(result):
+        return result
+    return domain + result
+
+
+def get_canoncial(soup):
+    canonical = soup.find('link', {'rel': 'canonical'})
+    return canonical['href']
+
+
 def extract_content(url, soup):
     return_dictionary = \
         {
             "title": None,
             "meta": None,
+            "favicon": None,
             "headings": None,
             "divs": None,
             "urls": None,
@@ -36,7 +60,12 @@ def extract_content(url, soup):
         if meta:
             return_dictionary["meta"] = meta[0]
 
-        #Get favicion #TODO
+        # Get favicon
+        return_dictionary["favicon"] = get_favicon(url, soup)
+        # Get canonical
+        canonical = get_canoncial(soup)
+        if canonical:
+            url = canonical
 
         # Get all divs
         list_of_divs = soup.findAll('div')
@@ -53,7 +82,6 @@ def extract_content(url, soup):
         urls = list(filter(None, urls))
         add_prefit = lambda x: x if (("http://" in x) or ("https://" in x)) else url + x
         urls = set(map(add_prefit, urls))
-
 
         # TODO:  Filter out pages only our pot can visit
 
@@ -81,56 +109,3 @@ def url_is_valid(url):
         r'(?::\d+)?'  # optional port
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
     return re.match(regex, url) is not None
-
-
-def get_urls_from_xml(url):
-    if url is None:
-        return None
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
-    raw_urls = [link.get_text() for link in soup.find_all('loc')]
-
-    extracted_urls = list(filter(lambda url: ".xml" not in url, raw_urls))
-    to_be_crawled_urls = list(filter(lambda url: ".xml" in url, raw_urls))
-
-    if len(to_be_crawled_urls) > 0:
-        extracted_urls += [get_urls_from_xml(urll) for urll in to_be_crawled_urls]
-
-    return extracted_urls
-
-
-
-def get_urls_from_sitemap(url):
-    domain = urlparse(url).netloc
-    domain = "http://" + domain if "http://" in url else "https://" + domain
-
-    response = requests.get(domain + "/robots.txt")
-    soup = BeautifulSoup(response.text, "html.parser")
-    lines = soup.prettify().split('\n')
-
-    sitemaps = list(filter(lambda line: "Sitemap:" in line, lines))
-    sitemaps = list(map(lambda line: line.replace('Sitemap: ', ''), sitemaps))
-
-    # Trying a common setup
-    if len(sitemaps) == 0:
-        sitemaps.append(domain + "/sitemap.xml")
-
-    extracted_urls = [get_urls_from_xml(sitemap) for sitemap in sitemaps][0]
-
-    extracted_urls = [item for sublist in extracted_urls for item in sublist]
-    #TODO: implement.We should only crawl pages that we are allowed to
-    return extracted_urls
-
-def robot_url_fetching_check(domain, urls):
-    """
-    TODO: add aditional support
-    1. How many requests reuests can be made per seond?
-    CHECK for resourses: https://docs.python.org/3/library/urllib.robotparser.html
-    """
-    forbidden_domains = ["http://analytics.google.com"]
-    if domain in forbidden_domains:
-        return []
-    global rp
-    rp.set_url(domain + "/robots.txt")
-    rp.read()
-    return list(filter(lambda url: rp.can_fetch("*", url), urls))

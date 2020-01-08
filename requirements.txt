@@ -2,7 +2,6 @@ pymongo
 bs4
 pymongo[srv]
 dnspython
-robotparser
 nltk
 textblob
 fast-pagerank

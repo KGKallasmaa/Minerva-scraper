@@ -16,7 +16,7 @@ def pageRank():
     print("Starting to calculate pageRank")
     rank()
     end = time.process_time()
-    print("Pagerank calculation completed in", (end - start), "seconds.")
+    print("Pagerank calculation completed in", (end - start)/60, "minutes.")
 
 
 if __name__ == '__main__':
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     ## Starting the scraper
 
     thread1 = threading.Thread(target=scraper)
-    threads.append(thread1)
+   # threads.append(thread1)
 
     ## Starting the pageranker
 

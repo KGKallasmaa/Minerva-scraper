@@ -1,9 +1,12 @@
 import ssl
 
-from pymongo import MongoClient
+from pymongo import MongoClient, CursorType
+from datetime import datetime
+from pymongo import DeleteOne
+import numpy as np
 
 username = "admin"
-pw = "syPQkR59Kst7ltg2"
+pw = "75o3eiompG4wGGVj"
 
 client = MongoClient(
     "mongodb+srv://" + username + ":" + pw + "@gowizcluster0-wsbvt.mongodb.net/test?retryWrites=true&w=majority",
@@ -14,21 +17,23 @@ print("Connected to the db")
 
 
 def get_pages():
-    global db
-    return list(db['pages'].find())
+    # TODO: make it more efficient
+    return np.array(list(db['pages'].find({}, {"_id": 1, "page_url": 1, "urls": 1}, cursor_type=CursorType.EXHAUST)))
 
 
-def add_page(title, url, meta, urls):
+def add_page(title, url, meta, favicon, urls):
     global pages
     if urls is None:
         urls = []
 
     new_page = {
-        "title": title,
+        "title": " ".join(title.split(" ")[1:]),
         "page_url": url,  # the url that is used to acces the page
+        "favicon": favicon,  # TODO: we should only save one favicon address pre domain
         "meta": meta,
         "urls": urls,  # the urls that the page links to
-        "pageRank": 0
+        "pageRank": 0,
+        "crawled_time_UTC": datetime.utcnow()
     }
     pages = db['pages']
 
@@ -40,34 +45,112 @@ def add_page(title, url, meta, urls):
         return pages.find_one({"page_url": url})["_id"]
 
 
-def add_to_reverse_index(keywords, page_id):
-    keywords_document = db['reverse_index']
-    many_new_entries = []
-    for keyword in keywords:
-        if keywords_document.find_one({"keyword": keyword}):
-            current_pages = keywords_document.find_one({"keyword": keyword})["pages"]
-            if page_id not in current_pages:
-                current_pages.append(page_id)
-                updates = {
-                    "pages": current_pages
-                }
-                keywords_document.update_one({"keyword": keyword}, {"$set": updates})
+def make_bulk_updates(results_from_db, page_id):
+    counter = 0
+    bulk = db['reverse_index'].initialize_unordered_bulk_op()
+    no_updates = True
+    for present_entries in results_from_db:
+        # process in bulk
+        keyword = present_entries["keyword"]
+        current_pages = present_entries["pages"]
 
-        else:
-            new_entry = {
-                "keyword": keyword,
-                "pages": [page_id],
+        if page_id not in current_pages:
+            current_pages.append(page_id)
+            updates = {
+                "pages": list(set(current_pages))
             }
-            many_new_entries.append(new_entry)
 
-    if len(many_new_entries) > 0:
-        keywords_document.insert_many(many_new_entries)
+            bulk.find({'keyword': keyword}).update({'$set': updates})
+            counter += 1
+            no_updates = False
+
+        if counter % 500 == 0:
+            bulk.execute()
+            bulk = db['reverse_index'].initialize_unordered_bulk_op()
+            counter = 0
+
+    if not no_updates:
+        if counter % 500 == 0:
+            bulk.execute()
 
 
-def update_pagrank(current_pages, pageranks):
-    pages = db['pages']
+def make_bulk_inserts(keywords_missing_in_the_db, page_id):
+    counter = 0
+    bulk = db['reverse_index'].initialize_unordered_bulk_op()
+    no_updates = True
+    for missing_keyword in keywords_missing_in_the_db:
+        # process in bulk
+        new_entry = {
+            "keyword": missing_keyword,
+            "pages": [page_id],
+        }
+        bulk.insert(new_entry)
+        counter += 1
+        no_updates = False
+
+        if counter % 500 == 0:
+            bulk.execute()
+            bulk = db['reverse_index'].initialize_unordered_bulk_op()
+            counter = 0
+
+    if not no_updates:
+        if counter % 500 == 0:
+            bulk.execute()
+
+
+def add_to_reverse_index(keywords, page_id):
+    # TODO: remove page from keyworrds if the page no loger has those keywords
+
+    keywords_document = db['reverse_index']
+
+    results_from_db = list(keywords_document.find({"keyword": {"$in": keywords}}, {"_id": 0, "keyword": 1, "pages": 1}))
+
+    # What keywords are missing?
+
+    keywords_present_in_the_db = [entry["keyword"] for entry in results_from_db]
+
+    keywords_missing_in_the_db = set(keywords) - set(keywords_present_in_the_db)
+
+    make_bulk_inserts(keywords_missing_in_the_db, page_id)
+    make_bulk_updates(results_from_db, page_id)
+
+
+def bulk_update_pagerank(current_pages, pageranks):
+    counter = 0
+    bulk = db['pages'].initialize_unordered_bulk_op()
+
     for i in range(len(pageranks)):
+        # process in bulk
+
         updates = {
             "pageRank": pageranks[i]
         }
-        pages.update_one({"_id": current_pages[i]["_id"]}, {"$set": updates})
+        bulk.find({"_id": current_pages[i]["_id"]}).update({'$set': updates})
+        counter += 1
+
+        if counter % 500 == 0:
+            bulk.execute()
+            bulk = db['pages'].initialize_unordered_bulk_op()
+            counter = 0
+
+    if counter % 500 == 0:
+        bulk.execute()
+
+
+def delete_duplicate_keywords_from_db():
+    keywords_document = db['reverse_index']
+    results_from_db = list(keywords_document.find())
+
+    keywords_present_in_the_db = [entry["keyword"] for entry in results_from_db]
+
+    duplicate_keyword_index = [i for i in range(len(keywords_present_in_the_db)) if
+                               not i == keywords_present_in_the_db.index(keywords_present_in_the_db[i])]
+
+    if len(duplicate_keyword_index) > 0:
+        print("Found", len(duplicate_keyword_index), "duplicate topics that will be deleted")
+        duplicate_results = [results_from_db[index] for index in duplicate_keyword_index]
+
+        duplicate_ids = [entry["_id"] for entry in duplicate_results]
+
+        to_be_deleted = [DeleteOne({'_id': id}) for id in duplicate_ids]
+        keywords_document.bulk_write(to_be_deleted, ordered=False)
