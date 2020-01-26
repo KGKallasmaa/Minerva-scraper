@@ -42,14 +42,17 @@ def scrape(url):
             else:
                 print("Problem scraping ", url + ".")
             # craw_new_urls(urls)
-            return content["urls"]
+           # return content["urls"]
+
 
 
 
     except Exception as e:
         # print("catching errors")
         print("[" + url + "]", e)
-        return []
+      #  return []
+    finally:
+        return None
 
 
 def crawl(urls_to_scrape):
@@ -57,7 +60,7 @@ def crawl(urls_to_scrape):
         print("Starting to crawl", len(urls_to_scrape), "urls")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=None) as x:
-            results = x.map(scrape, urls_to_scrape)
+            x.map(scrape, urls_to_scrape)
 
 
 def start_scraper():
