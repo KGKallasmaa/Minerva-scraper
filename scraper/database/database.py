@@ -1,3 +1,4 @@
+import random
 import ssl
 
 from pymongo import MongoClient, CursorType
@@ -103,7 +104,7 @@ def add_to_reverse_index(keywords, page_id):
 
     keywords_document = db['reverse_index']
 
-    results_from_db = list(keywords_document.find({"keyword": {"$in": keywords}}, {"_id": 0, "keyword": 1, "pages": 1}))
+    results_from_db = np.array(list(keywords_document.find({"keyword": {"$in": keywords}}, {"_id": 0, "keyword": 1, "pages": 1}, cursor_type=CursorType.EXHAUST)))
 
     # What keywords are missing?
 
@@ -111,8 +112,8 @@ def add_to_reverse_index(keywords, page_id):
 
     keywords_missing_in_the_db = set(keywords) - set(keywords_present_in_the_db)
 
-    make_bulk_inserts(keywords_missing_in_the_db, page_id)
-    make_bulk_updates(results_from_db, page_id)
+    make_bulk_inserts(keywords_missing_in_the_db, page_id) #todo one thread will do it
+    make_bulk_updates(results_from_db, page_id) # todo. another thread will do that
 
 
 def bulk_update_pagerank(current_pages, pageranks):
@@ -128,29 +129,34 @@ def bulk_update_pagerank(current_pages, pageranks):
         bulk.find({"_id": current_pages[i]["_id"]}).update({'$set': updates})
         counter += 1
 
-        if counter % 500 == 0:
+        if counter % 1000 == 0:
             bulk.execute()
             bulk = db['pages'].initialize_unordered_bulk_op()
             counter = 0
 
-    if counter % 500 == 0:
+    if counter % 1000 == 0:
         bulk.execute()
 
 
 def delete_duplicate_keywords_from_db():
-    keywords_document = db['reverse_index']
-    results_from_db = list(keywords_document.find())
+    if random.random() < 0.02: # we don't want the remove duplicates every time. It's too expensive
+        print("Staring to look duplicates in the db")
+        keywords_document = db['reverse_index']
 
-    keywords_present_in_the_db = [entry["keyword"] for entry in results_from_db]
+        results_from_db = np.array(list(keywords_document.find({}, {"_id": 1, "keyword": 1}, cursor_type=CursorType.EXHAUST)))
 
-    duplicate_keyword_index = [i for i in range(len(keywords_present_in_the_db)) if
-                               not i == keywords_present_in_the_db.index(keywords_present_in_the_db[i])]
+        keywords_present_in_the_db = [entry["keyword"] for entry in results_from_db]
 
-    if len(duplicate_keyword_index) > 0:
-        print("Found", len(duplicate_keyword_index), "duplicate topics that will be deleted")
-        duplicate_results = [results_from_db[index] for index in duplicate_keyword_index]
+        duplicate_keyword_index = [i for i in range(len(keywords_present_in_the_db)) if
+                                   not i == keywords_present_in_the_db.index(keywords_present_in_the_db[i])]
 
-        duplicate_ids = [entry["_id"] for entry in duplicate_results]
+        if len(duplicate_keyword_index) > 0:
+            print("Found", len(duplicate_keyword_index), "duplicate topics that will be deleted")
+            duplicate_results = [results_from_db[index] for index in duplicate_keyword_index]
 
-        to_be_deleted = [DeleteOne({'_id': id}) for id in duplicate_ids]
-        keywords_document.bulk_write(to_be_deleted, ordered=False)
+            duplicate_ids = [entry["_id"] for entry in duplicate_results]
+
+            to_be_deleted = [DeleteOne({'_id': id}) for id in duplicate_ids]
+            keywords_document.bulk_write(to_be_deleted, ordered=False)
+        else:
+            print("No duplicated found")

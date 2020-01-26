@@ -1,12 +1,8 @@
 import re
-import requests
 from scraper.language import language
-from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import urllib.robotparser as urobot
 import ssl
-import numpy as np
-from tornado import concurrent
 
 rp = urobot.RobotFileParser()
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -53,7 +49,7 @@ def extract_content(url, soup):
 
     try:
         # Get title
-        return_dictionary["title"] = soup.title.string
+        return_dictionary["title"] = soup.title.string.capitalize()
 
         # Get meta
         meta = [meta['content'] for meta in soup.findAll(attrs={"name": re.compile(r"description", re.I)})]

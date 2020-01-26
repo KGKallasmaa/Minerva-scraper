@@ -22,9 +22,8 @@ def make_array(pages):
         if len(c) > 0:
             page_nrs = [page_nr for page_nr, page in nr_page.items() if page['page_url'] in c]
             array.append([[value, page_nr] for page_nr in page_nrs][0])
-            
-    np_array = np.array(array)
-    return nr_page, np_array
+
+    return nr_page, np.array(array)
 
 
 ##### Connecting to the main methods
@@ -41,7 +40,7 @@ def rank():
     G = sparse.csr_matrix((weights, (A[:, 0], A[:, 1])), shape=(number_of_pages, number_of_pages))
     print("Finished creating the pageRank graph")
     print("Starting to calculate new pageRanks")
-    pr = pagerank_power(G, p=0.85, max_iter=5)  # pr[0] is the page rank of page nr_page[0]
+    pr = np.array(pagerank_power(G, p=0.85, max_iter=5))*number_of_pages  # pr[0] is the page rank of page nr_page[0]
     print("Finished calculating new pageRanks")
     print("Starting to update pageRanks in the db")
     bulk_update_pagerank(nr_page, pr)

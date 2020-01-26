@@ -1,28 +1,20 @@
 # TODO: support other languages
 # TODO: implement lemma support
 
-
-
 import numpy as np
 import string
 
-
-def get_suitable_words():
-    from nltk.corpus import stopwords, words
-    stop_words = stopwords.words('english')
-    words.ensure_loaded()
-    a = np.array(words.words())
-    b = np.array(stop_words)
-    return a[~np.isin(a, b)]
 
 
 
 
 def manage_real_words(words):
-    all_words = np.array(words)
-    suitable_values = get_suitable_words()
-    suitable_words_filter = np.in1d(words, suitable_values)
-    return all_words[suitable_words_filter]
+    #Remove stopwords
+    from nltk.corpus import stopwords
+    stop_words = np.array(stopwords.words('english'))
+    return np.setdiff1d(words,stop_words)
+
+
 
 
 
