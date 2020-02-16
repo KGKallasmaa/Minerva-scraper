@@ -1,5 +1,5 @@
+from datetime import datetime
 import requests
-
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import urllib.robotparser as urobot
@@ -23,15 +23,17 @@ def get_urls_from_xml(url):
 
     response = requests.get(url)
 
-    if response.status_code >= 300:
+    if response.status_code != 200:
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
-    raw_urls = np.array([link.get_text() for link in soup.find_all('loc')])
+    #  raw_urls = np.array([link.get_text() for link in soup.find_all('loc')])
+    urls = np.array([link.get_text() for link in soup.find_all('loc')])
 
-    extracted_urls = np.array(list(filter(lambda url: ".xml" not in url, raw_urls)))
+    # Do we need to crawl the urls SO soon?
 
-    to_be_crawled_urls = np.array(list(filter(lambda url: ".xml" in url, raw_urls)))
+    extracted_urls = np.array(list(filter(lambda url: ".xml" not in url, urls)))
+    to_be_crawled_urls = np.array(list(filter(lambda url: ".xml" in url, urls)))
 
     if len(to_be_crawled_urls) > 0:
         with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
