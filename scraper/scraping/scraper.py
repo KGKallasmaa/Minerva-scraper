@@ -1,4 +1,8 @@
 import re
+
+from scraper.database.database import get_domain_id
+from scraper.entity.domain import Domain
+from scraper.entity.page import Page
 from scraper.language import language
 from urllib.parse import urlparse
 import urllib.robotparser as urobot
@@ -17,9 +21,13 @@ def get_text(soup):
     return ' '.join(soup.stripped_strings)
 
 
-def get_favicon(url, soup):
+def get_domain(url):
     domain = urlparse(url).netloc
-    domain = "http://" + domain if "http://" in url else "https://" + domain
+    return "http://" + domain if "http://" in url else "https://" + domain
+
+
+def get_favicon(url, soup):
+    domain = get_domain(url)
 
     icon_link = soup.find("link", rel="shortcut icon")
     if icon_link is None:
@@ -46,70 +54,75 @@ def get_urls(url, soup):
     return list(set(map(add_prefit, urls)))
 
 
-def extract_content(url, soup):
+def extract_content(url, soup, current_time):
     # The main function
+    page = Page(url=url,
+                title=soup.title.string.capitalize().strip(),
+                meta=None,
+                domain_id=None,
+                divs=None,
+                headings=None,
+                current_time=current_time,
+                urls=None)
 
-    # Get title and initialise the
-    return_dictionary = {"title": soup.title.string.capitalize(),
-                         "meta": None,
-                         "url":url,
-                         "favicon": None,
-                         "headings": None,
-                         "divs": None,
-                         "urls": None,
-                         "word_count_dict": None,
-                         }
+    domain_obj = Domain(domain=get_domain(url),
+                        favicon=None,
+                        current_time=current_time)
 
     # Get meta
     meta = [meta['content'] for meta in soup.findAll(attrs={"name": re.compile(r"description", re.I)})]
     if meta:
-        return_dictionary["meta"] = meta[0]
+        page.meta = meta[0]
 
     # Get favicon
-    return_dictionary["favicon"] = get_favicon(url, soup)
+    domain_obj.favicon = get_favicon(url, soup)
+
 
     # Get canonical
     canonical = get_canoncial(soup)
     if canonical:
-        return_dictionary["url"] = canonical
+        page.url = canonical
 
-    # Get all divs
-    list_of_divs = soup.findAll('div')
+
+    list_of_divs = [r.text for r in soup.findAll('div')]
     if list_of_divs:
-        return_dictionary["divs"] = list_of_divs
+        list_of_divs = [word.replace("\n", " ") for word in list_of_divs]
+        list_of_divs = [" ".join(word.split()) for word in list_of_divs]
+        list_of_divs = [i for i in list_of_divs if i]
 
-    # Get all headings
+        page.divs = list_of_divs
+
+    # TODO: use them Get all headings
     list_of_headings = [headlines.text.strip() for headlines in soup.find_all(re.compile('^h[1-6]$'))]
     if list_of_headings:
-        return_dictionary["headings"] = list_of_headings
-
+        page.headings = list_of_headings
     # Get all urls
-    urls = get_urls(url, soup)
-    if urls:
-        return_dictionary["urls"] = compress_urls(urls)
+    page.add_urls(get_urls(url, soup))
 
-    # Get all keywords and their count
     word_count = language.word_count(get_text(soup))
-    if word_count:
-        return_dictionary["word_count_dict"] = word_count
+
+    page.domain_id = get_domain_id(domain_obj.domain, domain_obj)
 
 
-    return return_dictionary
+    return word_count, page
 
 
 def calculate_fingerprint(page_data):
-    values_as_str =''.join('{}{}'.format(key, val) for key, val in page_data.items())
+    values_as_str = ''.join('{}{}'.format(key, val) for key, val in page_data.items())
     rest = fp(values_as_str)
     return rest
+
 
 def compress_urls(list_of_urls):
     list_of_urls.sort()
     my_string = ','.join(map(str, list_of_urls)).encode()
     return zlib.compress(my_string, 2)
 
+
 def de_compress(compressed_string):
     decoded = zlib.decompress(compressed_string).decode("utf-8")
     return decoded.split(",")
+
 
 def get_initial_domain_content(url, current_time, favicon):
     domain = urlparse(url).netloc
