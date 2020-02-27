@@ -5,4 +5,9 @@ dnspython
 nltk
 textblob
 fast-pagerank
-random
+spacy
+datetime
+pyhash
+zlib
+dryscrape
+readability
