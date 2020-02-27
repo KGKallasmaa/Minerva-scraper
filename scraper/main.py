@@ -1,3 +1,4 @@
+import datetime
 import time
 
 from bs4 import BeautifulSoup
@@ -5,7 +6,9 @@ import requests
 
 from tornado import concurrent
 
-from scraper.database.database import add_page, add_to_reverse_index, delete_duplicate_keywords_from_db
+from scraper.database.database import add_page, add_to_reverse_index, delete_duplicate_keywords_from_db, \
+    add_page_statistics
+from scraper.entity.page_statisitcs import PageStatistics
 from scraper.language.language import nr_of_words_in_url
 from scraper.scraping.scraper import extract_content
 
@@ -19,46 +22,51 @@ from bs4 import BeautifulSoup
 
 # MAIN FUNCTIONALITY
 i = 0
+headers = {
+    'User-Agent': '*',
+    'From': 'karl.gustav1789@gmail.com'
+}
 
 
 def scrape(url):
     global i
-    headers = {
-        'User-Agent': '*',
-        'From': 'karl.gustav1789@gmail.com'
-    }
+    global headers
+
     current_milli_time = lambda: int(round(time.time() * 1000))
 
-    response_time_ms = current_milli_time()
+    current_time = datetime.datetime.utcnow()
 
+    response_time_ms = current_milli_time()
     response = requests.get(url, headers=headers)
 
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, "html.parser")
-        response_time_ms = current_milli_time() - response_time_ms
-        # Extract the info
-        content = extract_content(url, soup)
+    if response.status_code != 200:
+        return None
 
-        # Save results to DB
-        if content["title"] and content["word_count_dict"]:
-            nr_of_words = nr_of_words_in_url(content["word_count_dict"])
+    soup = BeautifulSoup(response.text, "html.parser")
+    response_time_ms = current_milli_time() - response_time_ms
 
-            page_id = add_page(content["title"],
-                               content["url"], content["meta"],
-                               content["favicon"],
-                               content["urls"],
-                               nr_of_words,
-                               response_time_ms)
+    # Extract the page info
+    word_count, page = extract_content(url, soup, current_time)
 
-            # Update the reverse index
-            discovered_keywords = [*content["word_count_dict"].keys()]
-            add_to_reverse_index(discovered_keywords, page_id)
-            print("completed scraping for", url)
-            i += 1
-        else:
-            print("Problem scraping ", url + ".")
+    # Save results to DB
+    if page.title and word_count is not None:
+        page_id = add_page(page=page,
+                           current_time=current_time)
 
-    return None
+        page_statistics = PageStatistics(page_id=page_id,
+                                          current_time=current_time,
+                                          page=page,
+                                          speed=response_time_ms)
+
+        add_page_statistics(page_statistics, current_time)
+
+        # Update the reverse index
+        discovered_keywords = [*word_count.keys()]
+        add_to_reverse_index(discovered_keywords, page_id)
+        print("completed scraping for", url)
+        i += 1
+    else:
+        print("Problem scraping ", url + ".")
 
 
 def crawl(urls_to_scrape):

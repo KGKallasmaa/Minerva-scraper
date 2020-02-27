@@ -10,3 +10,4 @@ datetime
 pyhash
 zlib
 dryscrape
+readability
