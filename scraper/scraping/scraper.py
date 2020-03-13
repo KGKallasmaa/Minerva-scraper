@@ -77,12 +77,10 @@ def extract_content(url, soup, current_time):
     # Get favicon
     domain_obj.favicon = get_favicon(url, soup)
 
-
     # Get canonical
     canonical = get_canoncial(soup)
     if canonical:
         page.url = canonical
-
 
     list_of_divs = [r.text for r in soup.findAll('div')]
     if list_of_divs:
@@ -100,9 +98,7 @@ def extract_content(url, soup, current_time):
     page.add_urls(get_urls(url, soup))
 
     word_count = language.word_count(get_text(soup))
-
     page.domain_id = get_domain_id(domain_obj.domain, domain_obj)
-
 
     return word_count, page
 
