@@ -1,7 +1,7 @@
 import datetime
 import time
 
-from bs4 import BeautifulSoup
+
 import requests
 
 from tornado import concurrent
@@ -9,8 +9,9 @@ from tornado import concurrent
 from scraper.database.database import add_page, add_to_reverse_index, delete_duplicate_keywords_from_db, \
     add_page_statistics
 from scraper.entity.page_statisitcs import PageStatistics
-from scraper.language.language import nr_of_words_in_url
+
 from scraper.scraping.scraper import extract_content
+
 
 # TODO: implement functionality to crawl the urls that were discovered
 
@@ -43,6 +44,7 @@ def scrape(url):
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
+
     response_time_ms = current_milli_time() - response_time_ms
 
     # Extract the page info
@@ -54,9 +56,9 @@ def scrape(url):
                            current_time=current_time)
 
         page_statistics = PageStatistics(page_id=page_id,
-                                          current_time=current_time,
-                                          page=page,
-                                          speed=response_time_ms)
+                                         current_time=current_time,
+                                         page=page,
+                                         speed=response_time_ms)
 
         add_page_statistics(page_statistics, current_time)
 

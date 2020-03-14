@@ -1,3 +1,4 @@
+import datetime
 import random
 import ssl
 
@@ -34,20 +35,29 @@ def get_page_rank_by_page_id(page_id):
     return 0
 
 
-def get_domain_id(domain, domain_obj):
+def get_domain_id(domain, domain_obj, current_time):
     global client
     db = client.get_database("Index")
     domains = db['domains']
     current_domain_data = domains.find_one({"domain": domain})
+
     if current_domain_data is not None:
+        domain_data = {
+            "last_crawl_UTC": current_time,
+        }
+        # We should not update to often
+        one_hour_ago = datetime.datetime.utcnow() - datetime.timedelta(hours = 1)
+        if current_domain_data["last_crawl_UTC"] > one_hour_ago:
+            return current_domain_data["_id"]
+
+        ssl_is_present = "https://" in domain
+        if ssl_is_present != current_domain_data["ssl_is_present"]:
+            domain_data['ssl_is_present'] = ssl_is_present
+        domains.update({'_id': current_domain_data["_id"]}, {'$set': domain_data})
         return current_domain_data["_id"]
 
-    domain_data = {
-        "domain": domain_obj.domain,
-        "favicon": domain_obj.favicon,
-        "first_crawl_UTC": domain_obj.first_crawl_UTC,
-        "last_crawl_UTC": domain_obj.last_crawl_UTC
-    }
+    domain_data = domain_obj.get_values_for_db()
+
     domains.insert_one(domain_data)
     return domains.find_one({"domain": domain})["_id"]
 
@@ -55,15 +65,7 @@ def get_domain_id(domain, domain_obj):
 def add_page(page, current_time):
     global client
     db = client.get_database("Index")
-    new_page = {
-        "url": page.url,
-        "title": page.title,
-        "domain_id": page.domain_id,
-        "meta": page.meta,
-        "urls": page.urls,
-        "first_crawl_UTC": page.first_crawl_UTC,
-        "last_crawl_UTC": page.last_crawl_UTC
-    }
+    new_page = page.get_values_for_db()
     pages = db['pages']
 
     current_fingerprint = page.get_fingerprint()
@@ -86,14 +88,7 @@ def add_page(page, current_time):
 def add_page_statistics(page_stat, current_time):
     global client
     db = client.get_database("Analytics")
-    new_page_statistics = {
-        "page_id": page_stat.page_id,
-        "update_date_UTC": current_time,
-        "language": page_stat.language,
-        "pageRank": page_stat.page_rank,
-        "page_load_speed": page_stat.page_load_speed,
-        "url_length": page_stat.url_length,
-    }
+    new_page_statistics = page_stat.get_values_for_db(current_time)
     page_statistics = db['page_statistics']
 
     old_data = page_statistics.find_one({"page_id": page_stat.page_id})

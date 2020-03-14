@@ -94,11 +94,23 @@ def extract_content(url, soup, current_time):
     list_of_headings = [headlines.text.strip() for headlines in soup.find_all(re.compile('^h[1-6]$'))]
     if list_of_headings:
         page.headings = list_of_headings
+        list_of_h1_headings = [headlines.text.strip() for headlines in soup.find_all(re.compile('^h[1]$'))]
+        list_of_h2_headings = [headlines.text.strip() for headlines in soup.find_all(re.compile('^h[2]$'))]
+        list_of_h3_headings = [headlines.text.strip() for headlines in soup.find_all(re.compile('^h[3]$'))]
+        if list_of_h1_headings:
+            page.heading1 = list_of_h1_headings
+        if list_of_h2_headings:
+            page.heading2 = list_of_h2_headings
+        if list_of_h3_headings:
+            page.heading3 = list_of_h3_headings
+
+
     # Get all urls
     page.add_urls(get_urls(url, soup))
 
     word_count = language.word_count(get_text(soup))
-    page.domain_id = get_domain_id(domain_obj.domain, domain_obj)
+    page.domain_id = get_domain_id(domain_obj.domain, domain_obj,current_time)
+
 
     return word_count, page
 
