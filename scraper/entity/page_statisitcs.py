@@ -20,7 +20,7 @@ class PageStatistics:
         self.words_in_h2 = self.get_words_in_headings(page.heading2)
         self.words_in_h3 = self.get_words_in_headings(page.heading3)
 
-        #TODO: nr of links from gov,edu and org
+        # TODO: nr of links from gov,edu and org
         self.nr_of_links_from_gov = 0
         self.nr_of_links_from_edu = 0
         self.nr_of_links_from_org = 0

@@ -16,15 +16,6 @@ print("Connected to the client")
 print("Connected to the db")
 
 
-def get_pages():
-    global client
-    db = client.get_database("Index")
-    pages = []
-    for d in db['pages'].find({}, {"_id": 1, "url": 1, "urls": 1}).sort([('$natural', 1)]):
-        pages.append(d)
-    return np.array(pages)
-
-
 def get_page_rank_by_page_id(page_id):
     global client
     db = client.get_database("Analytics")
@@ -46,7 +37,7 @@ def get_domain_id(domain, domain_obj, current_time):
             "last_crawl_UTC": current_time,
         }
         # We should not update to often
-        one_hour_ago = datetime.datetime.utcnow() - datetime.timedelta(hours = 1)
+        one_hour_ago = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
         if current_domain_data["last_crawl_UTC"] > one_hour_ago:
             return current_domain_data["_id"]
 

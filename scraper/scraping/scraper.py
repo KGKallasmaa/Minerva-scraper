@@ -57,6 +57,7 @@ def get_urls(url, soup):
 def extract_content(url, soup, current_time):
     # The main function
     page = Page(url=url,
+
                 title=soup.title.string.capitalize().strip(),
                 meta=None,
                 domain_id=None,
@@ -80,6 +81,9 @@ def extract_content(url, soup, current_time):
     # Get canonical
     canonical = get_canoncial(soup)
     if canonical:
+        if url != canonical:
+            page.url_is_canonical = False
+
         page.url = canonical
 
     list_of_divs = [r.text for r in soup.findAll('div')]
@@ -104,13 +108,11 @@ def extract_content(url, soup, current_time):
         if list_of_h3_headings:
             page.heading3 = list_of_h3_headings
 
-
     # Get all urls
     page.add_urls(get_urls(url, soup))
 
     word_count = language.word_count(get_text(soup))
-    page.domain_id = get_domain_id(domain_obj.domain, domain_obj,current_time)
-
+    page.domain_id = get_domain_id(domain_obj.domain, domain_obj, current_time)
 
     return word_count, page
 

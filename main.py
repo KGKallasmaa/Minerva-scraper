@@ -9,14 +9,12 @@ def scraper():
 
 if __name__ == '__main__':
 
-
     threads = []
 
     ## Starting the scraper
 
     thread1 = threading.Thread(target=scraper)
     threads.append(thread1)
-
 
     for t in threads:
         t.start()

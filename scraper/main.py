@@ -1,7 +1,6 @@
 import datetime
 import time
 
-
 import requests
 
 from tornado import concurrent
@@ -11,7 +10,6 @@ from scraper.database.database import add_page, add_to_reverse_index, delete_dup
 from scraper.entity.page_statisitcs import PageStatistics
 
 from scraper.scraping.scraper import extract_content
-
 
 # TODO: implement functionality to crawl the urls that were discovered
 

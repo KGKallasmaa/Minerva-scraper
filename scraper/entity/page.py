@@ -21,19 +21,19 @@ class Page:
         self.heading2 = []
         self.heading3 = []
 
-
+        self.url_is_canonical = True
 
     def get_values_for_db(self):
         return {
-            "url":self.url,
-            "title":self.title,
-            "domain_id":self.domain_id,
-            "meta":self.meta,
-            "urls":self.urls,
-            "first_crawl_UTC":self.first_crawl_UTC,
-            "last_crawl_UTC":self.last_crawl_UTC,
+            "url": self.url,
+            "title": self.title,
+            "domain_id": self.domain_id,
+            "meta": self.meta,
+            "urls": self.urls,
+            "first_crawl_UTC": self.first_crawl_UTC,
+            "last_crawl_UTC": self.last_crawl_UTC,
+            "url_is_canonical": self.url_is_canonical
         }
-
 
     def compress_urls(self, urls):
         if urls is None or len(urls) == 0:
