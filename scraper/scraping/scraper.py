@@ -8,7 +8,8 @@ from urllib.parse import urlparse
 import urllib.robotparser as urobot
 import ssl
 import pyhash
-import zlib
+
+from scraper.utils.utils import get_domain
 
 rp = urobot.RobotFileParser()
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -19,11 +20,6 @@ def get_text(soup):
     for s in soup(['script', 'style']):
         s.decompose()
     return ' '.join(soup.stripped_strings)
-
-
-def get_domain(url):
-    domain = urlparse(url).netloc
-    return "http://" + domain if "http://" in url else "https://" + domain
 
 
 def get_favicon(url, soup):
@@ -43,7 +39,9 @@ def get_favicon(url, soup):
 
 def get_canoncial(soup):
     canonical = soup.find('link', {'rel': 'canonical'})
-    return canonical['href']
+    if canonical:
+        return canonical['href']
+    return None
 
 
 def get_urls(url, soup):
@@ -54,11 +52,17 @@ def get_urls(url, soup):
     return list(set(map(add_prefit, urls)))
 
 
-def extract_content(url, soup, current_time):
+def extract_content(url, soup, current_time, client):
+    # Get title
+    title = None
+    if soup.title:
+        title = soup.title.string
+        if title:
+            title = title.capitalize().strip()
+
     # The main function
     page = Page(url=url,
-
-                title=soup.title.string.capitalize().strip(),
+                title=title,
                 meta=None,
                 domain_id=None,
                 divs=None,
@@ -74,6 +78,8 @@ def extract_content(url, soup, current_time):
     meta = [meta['content'] for meta in soup.findAll(attrs={"name": re.compile(r"description", re.I)})]
     if meta:
         page.meta = meta[0]
+    else:
+        page.meta = ""
 
     # Get favicon
     domain_obj.favicon = get_favicon(url, soup)
@@ -112,7 +118,7 @@ def extract_content(url, soup, current_time):
     page.add_urls(get_urls(url, soup))
 
     word_count = language.word_count(get_text(soup))
-    page.domain_id = get_domain_id(domain_obj.domain, domain_obj, current_time)
+    page.domain_id = get_domain_id(domain_obj.domain, domain_obj, current_time, client=client)
 
     return word_count, page
 
@@ -121,17 +127,6 @@ def calculate_fingerprint(page_data):
     values_as_str = ''.join('{}{}'.format(key, val) for key, val in page_data.items())
     rest = fp(values_as_str)
     return rest
-
-
-def compress_urls(list_of_urls):
-    list_of_urls.sort()
-    my_string = ','.join(map(str, list_of_urls)).encode()
-    return zlib.compress(my_string, 2)
-
-
-def de_compress(compressed_string):
-    decoded = zlib.decompress(compressed_string).decode("utf-8")
-    return decoded.split(",")
 
 
 def get_initial_domain_content(url, current_time, favicon):
