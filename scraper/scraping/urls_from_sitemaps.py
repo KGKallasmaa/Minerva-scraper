@@ -18,7 +18,7 @@ rp = urobot.RobotFileParser()
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
-def get_urls_from_xml(url):
+def get_urls_from_xml(url,isTesting=False):
     global j
     if url is None:
         return None
@@ -47,7 +47,9 @@ def get_urls_from_xml(url):
             url_lastmod[new_url] = last_mod
 
     client = get_client()
-    pages_not_to_crawl = pages_we_will_not_crawl(url_lastmod, client)
+    pages_not_to_crawl = []
+    if not isTesting:
+        pages_not_to_crawl = pages_we_will_not_crawl(url_lastmod, client)
     extracted_urls = list(set(extracted_urls) - pages_not_to_crawl)
     all_urls = [compress_urls(np.array(extracted_urls))]
 
@@ -61,7 +63,7 @@ def get_urls_from_xml(url):
     return all_urls
 
 
-def get_sitemaps_from_url(url):
+def get_urls_from_domain(url):
     domain = get_domain(url)
 
     response = requests.get(domain + "/robots.txt")
@@ -101,8 +103,7 @@ def get_sitemaps_from_url(url):
     # TODO: implement.We should only crawl pages that we are allowed to
     # todo: we should respect robots.txt. Twitter robots.txt has very good documentation. study it
     if len(urls_two_d_array) > 0:
-        res = np.array(reduce(lambda z, y: z + y, urls_two_d_array))
-        return res
+        return np.array(reduce(lambda z, y: z + y, urls_two_d_array))
     return np.array(urls_two_d_array)
 
 
