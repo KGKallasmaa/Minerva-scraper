@@ -11,7 +11,7 @@ from scraper.scraping.scraper import extract_content, url_is_valid
 # TODO: problem scraping pages that don't do server side rendering
 
 
-from scraper.scraping.urls_from_sitemaps import get_sitemaps_from_url
+from scraper.scraping.urls_from_sitemaps import get_urls_from_domain
 from bs4 import BeautifulSoup
 
 # MAIN FUNCTIONALITY
@@ -62,18 +62,18 @@ def scrape(url):
             add_to_reverse_index(discovered_keywords, page_id, client)
 
             new_domains = compress_urls(page.extract_domains_linked_domains(get_domain(page.url)))
-            print("completed scraping for", url)
+            print("completed scraping for {}".format(url))
             i += 1
             client.close()
             # Get domains to scrape next
             return new_domains
         except:
             client.close()
-            print("Problem scraping ", url + ".")
+            print("Problem scraping {}".format(url))
 
     else:
         client.close()
-        print("Problem scraping ", url + ".")
+        print("Problem scraping {}".format(url))
 
     return []
 
@@ -83,7 +83,7 @@ def crawl(urls_to_scrape):
 
     # Crawl the given urls
     if urls_to_scrape.shape[0] > 0:
-        print("Starting to crawl", len(urls_to_scrape), "urls")
+        print("Starting to crawl {} urls".format(len(urls_to_scrape)))
         with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
             for result in executor.map(scrape, urls_to_scrape):
                 if result is not None and len(result) > 0:
@@ -97,7 +97,7 @@ def start_scraper():
     # Initial array of URLs to scrape
     urls_to_scrape = [line.rstrip('\n') for line in open('./scraper/scraping/domains/test_domains.txt')]
 
-    print("Starting to scrape", len(urls_to_scrape), "domains")
+    print("Starting to scrape {} domains".format(len(urls_to_scrape)))
     start_time = time.process_time()
     end_time = time.process_time()
     max_crawling_time_in_minutes = 90
@@ -105,22 +105,23 @@ def start_scraper():
 
     # Crawl each url individually
     while len(urls_to_scrape) > 0:
-        print("Domains left", len(urls_to_scrape))
+        print("Domains left {}".format(len(urls_to_scrape)))
         url = urls_to_scrape.pop()
         if url not in already_crawled and url_is_valid(url):
             if ((end_time - start_time) / 60.0) < max_crawling_time_in_minutes:
-                discovered_urls = get_sitemaps_from_url(url)
+                discovered_urls = get_urls_from_domain(url)
                 if discovered_urls is not None and len(discovered_urls.shape) > 0:
                     new_domains = crawl(discovered_urls)  # crawl(discovered_urls)
                     urls_to_scrape.extend(new_domains)
                     urls_to_scrape = list(set(urls_to_scrape))
-                    print("Completed crawling", i, "pages for", url)
+                    print("Completed crawling {} pages for {}".format(i, len(urls_to_scrape)))
                 else:
-                    print("No urls found for", url)
+                    print("No urs found for {}".format(len(url)))
+
                 i = 0
                 end_time = time.process_time()
             else:
                 urls_to_scrape = []
-        already_crawled.append(url)
+            already_crawled.append(url)
 
     print("Scraping done in", (end_time - start_time) / 60, "minutes")
