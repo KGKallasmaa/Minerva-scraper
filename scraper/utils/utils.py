@@ -1,9 +1,12 @@
-from urllib.parse import urlparse
 import zlib
+import tldextract
 
 def get_domain(url):
-    domain = urlparse(url).netloc
-    return "http://" + domain if "http://" in url else "https://" + domain
+    ext = tldextract.extract(url)
+    if "https://" in url:
+        return  "https://"+ext.registered_domain
+    return "http://" + ext.registered_domain
+
 
 
 def compress_urls(urls):
@@ -17,5 +20,5 @@ def compress_urls(urls):
 def de_compress(string):
     if string is None:
         return []
-    decoded = zlib.decompress(string).decode("utf-8")
-    return decoded.split(",")
+
+    return zlib.decompress(string).decode("utf-8").split(",")

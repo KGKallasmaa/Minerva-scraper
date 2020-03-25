@@ -1,6 +1,7 @@
 # TODO: support other languages
 
 import spacy
+from collections import Counter
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -11,24 +12,20 @@ nlp = spacy.load("en_core_web_sm")
 def pre_process_with_spacy(string):
     # Tokenise
     doc = nlp(string)
+
     tokens = [token.lemma_ for token in doc if
               (token.is_stop is False and token.is_punct is False and token.is_space is False)]
     # Remove single characters.
     tokens = [token for token in tokens if len(token) > 1]
-    # To lower case and sorting
+    # To lower case
     tokens = [x.lower() for x in tokens]
-    tokens.sort()
+
     return tokens
 
 
 def word_count(string):
     pre_prossessed_array = pre_process_with_spacy(string)
-    my_dict = {}
-
-    for i in pre_prossessed_array:
-        my_dict[i] = my_dict.get(i, 0) + 1
-
-    return my_dict
+    return Counter(pre_prossessed_array)
 
 
 def nr_of_words_in_url(dict):

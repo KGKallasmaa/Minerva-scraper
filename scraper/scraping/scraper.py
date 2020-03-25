@@ -130,8 +130,7 @@ def calculate_fingerprint(page_data):
 
 
 def get_initial_domain_content(url, current_time, favicon):
-    domain = urlparse(url).netloc
-    domain = "http://" + domain if "http://" in url else "https://" + domain
+    domain = get_domain(url)
 
     domain_data = {
         "domain_url": domain,
