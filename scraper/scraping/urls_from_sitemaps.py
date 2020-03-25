@@ -1,14 +1,16 @@
-from datetime import datetime
+from functools import reduce
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
 import urllib.robotparser as urobot
 import ssl
 import numpy as np
 from tornado import concurrent
-
 import asyncio
 from tornado.platform.asyncio import AnyThreadEventLoopPolicy
+
+from scraper.database.database import pages_we_will_not_crawl, get_client
+from scraper.scraping.scraper import get_domain
+from scraper.utils.utils import compress_urls, de_compress
 
 asyncio.set_event_loop_policy(AnyThreadEventLoopPolicy())
 
@@ -17,38 +19,50 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 
 def get_urls_from_xml(url):
-    # TODO: implement numpy array
+    global j
     if url is None:
         return None
 
     response = requests.get(url)
-
     if response.status_code != 200:
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
-    #  raw_urls = np.array([link.get_text() for link in soup.find_all('loc')])
     urls = np.array([link.get_text() for link in soup.find_all('loc')])
 
-    # Do we need to crawl the urls SO soon?
-
-    extracted_urls = np.array(list(filter(lambda url: ".xml" not in url, urls)))
+    extracted_urls = list(filter(lambda url: ".xml" not in url, urls))
     to_be_crawled_urls = np.array(list(filter(lambda url: ".xml" in url, urls)))
+
+    # Remove urls we should not crawl, because they haven't been changed since last crawling time
+    url_lastmod = {}
+
+    for el in soup.find_all("url"):
+        last_mod = [link.get_text() for link in el.find_all('lastmod')]
+        last_mod = last_mod[0] if len(last_mod) > 0 else None
+
+        new_url = [link.get_text() for link in el.find_all('loc')]
+        new_url = new_url[0] if len(new_url) > 0 else None
+
+        if new_url:
+            url_lastmod[new_url] = last_mod
+
+    client = get_client()
+    pages_not_to_crawl = pages_we_will_not_crawl(url_lastmod, client)
+    extracted_urls = list(set(extracted_urls) - pages_not_to_crawl)
+    all_urls = [compress_urls(np.array(extracted_urls))]
 
     if len(to_be_crawled_urls) > 0:
         with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
             for result in executor.map(get_urls_from_xml, to_be_crawled_urls):
-                if result is not None and len(result) > 0:
-                    extracted_urls = np.concatenate((extracted_urls, result), axis=None)
+                if result is not None:
+                    all_urls.append(result)
 
-    if len(extracted_urls) < 1:
-        return None
-    return extracted_urls
+    client.close()
+    return all_urls
 
 
 def get_sitemaps_from_url(url):
-    domain = urlparse(url).netloc
-    domain = "http://" + domain if "http://" in url else "https://" + domain
+    domain = get_domain(url)
 
     response = requests.get(domain + "/robots.txt")
 
@@ -62,20 +76,34 @@ def get_sitemaps_from_url(url):
     if len(sitemaps) == 0:
         sitemaps.append(domain + "/sitemap.xml")
 
-    extracted_urls = None
+    # Fetch all URLS
+    extracted_compressed_urls = []
 
-    for sitemap in sitemaps:
-        result = get_urls_from_xml(sitemap)
-        if result is not None:
-            if extracted_urls is None:
-                extracted_urls = result
-            else:
-                extracted_urls = np.concatenate((extracted_urls, result), axis=None)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+        for result in executor.map(get_urls_from_xml, sitemaps):
+            if result is not None:
+                extracted_compressed_urls.extend(result)
+
+    # Decompress all
+    urls_two_d_array = []
+
+    while len(extracted_compressed_urls) > 0:
+        array = extracted_compressed_urls.pop()
+        if type(array) is list:
+            array = array[0]
+        array = de_compress(array)
+
+        if len(array) > 0:
+            urls_two_d_array.append(array)
+
+    # Flatten the array
 
     # TODO: implement.We should only crawl pages that we are allowed to
     # todo: we should respect robots.txt. Twitter robots.txt has very good documentation. study it
-
-    return extracted_urls
+    if len(urls_two_d_array) > 0:
+        res = np.array(reduce(lambda z, y: z + y, urls_two_d_array))
+        return res
+    return np.array(urls_two_d_array)
 
 
 def robot_url_fetching_check(domain, urls):
@@ -84,13 +112,42 @@ def robot_url_fetching_check(domain, urls):
     1. How many requests reuests can be made per seond?
     CHECK for resourses: https://docs.python.org/3/library/urllib.robotparser.html
     """
+
+    """"
+    
+   
+    
+    
     forbidden_domains = ["http://analytics.google.com"]
     if domain in forbidden_domains:
         return []
     global rp
     rp.set_url(domain + "/robots.txt")
     rp.read()
-    return list(filter(lambda url: rp.can_fetch("*", url), urls))
+    print("hi")
+    print(rp)
+    res = list(filter(lambda url: rp.can_fetch("*", url), urls))
+    print(res)
+    return  urls
+    
+    """
+    robots_url = domain+"/robots.txt"
+ #   response = requests.get(robots_url, headers=headers)
+
+#    rp = urllib.robotparser.RobotFileParser()
+#    rp.set_url(robots_url)
+ #   rp.read()
+ #   rrate = rp.request_rate("*")
+  #  if rrate is not None:
+   #     print("Number of request can be crawled in ", rrate.seconds, " seconds is", rrate.requests)
+   # print("Crawl delay", rp.crawl_delay("*"))
+
+   # res = list(filter(lambda url: rp.can_fetch("*", url), urls))
+   # print("pages we can crawl")
+   # print(res)
+
+    return None
+
 
 
 """
