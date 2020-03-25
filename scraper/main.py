@@ -4,35 +4,32 @@ import time
 import requests
 
 from tornado import concurrent
-
-from scraper.database.database import add_page, add_to_reverse_index, delete_duplicate_keywords_from_db, \
-    add_page_statistics
+from scraper.database.database import add_to_reverse_index, get_client
 from scraper.entity.page_statisitcs import PageStatistics
-
-from scraper.scraping.scraper import extract_content
-
-# TODO: implement functionality to crawl the urls that were discovered
-
+from scraper.scraping.scraper import extract_content, url_is_valid
 
 # TODO: problem scraping pages that don't do server side rendering
+
 
 from scraper.scraping.urls_from_sitemaps import get_sitemaps_from_url
 from bs4 import BeautifulSoup
 
 # MAIN FUNCTIONALITY
+from scraper.utils.utils import get_domain, compress_urls, de_compress
+
 i = 0
 headers = {
     'User-Agent': '*',
     'From': 'karl.gustav1789@gmail.com'
 }
 
+current_milli_time = lambda: int(round(time.time() * 1000))
+
 
 def scrape(url):
     global i
     global headers
-
-    current_milli_time = lambda: int(round(time.time() * 1000))
-
+    client = get_client()
     current_time = datetime.datetime.utcnow()
 
     response_time_ms = current_milli_time()
@@ -44,56 +41,86 @@ def scrape(url):
     soup = BeautifulSoup(response.text, "html.parser")
 
     response_time_ms = current_milli_time() - response_time_ms
-
     # Extract the page info
-    word_count, page = extract_content(url, soup, current_time)
+    word_count, page = extract_content(url, soup, current_time, client)
 
     # Save results to DB
-    if page.title and word_count is not None:
-        page_id = add_page(page=page,
-                           current_time=current_time)
+    if (page.title is not None) and (word_count is not None):
+        try:
+            page_id = page.add_page(current_time=current_time,
+                                    client=client)
+            page_statistics = PageStatistics(page_id=page_id,
+                                             current_time=current_time,
+                                             page=page,
+                                             speed=response_time_ms,
+                                             client=client)
+            page_statistics.add_page_statistics(current_time=current_time,
+                                                client=client)
 
-        page_statistics = PageStatistics(page_id=page_id,
-                                         current_time=current_time,
-                                         page=page,
-                                         speed=response_time_ms)
+            # Update the reverse index
+            discovered_keywords = [*word_count.keys()]
+            add_to_reverse_index(discovered_keywords, page_id, client)
 
-        add_page_statistics(page_statistics, current_time)
+            new_domains = compress_urls(page.extract_domains_linked_domains(get_domain(page.url)))
+            print("completed scraping for", url)
+            i += 1
+            client.close()
+            # Get domains to scrape next
+            return new_domains
+        except:
+            client.close()
+            print("Problem scraping ", url + ".")
 
-        # Update the reverse index
-        discovered_keywords = [*word_count.keys()]
-        add_to_reverse_index(discovered_keywords, page_id)
-        print("completed scraping for", url)
-        i += 1
     else:
+        client.close()
         print("Problem scraping ", url + ".")
+
+    return []
 
 
 def crawl(urls_to_scrape):
+    domains_found = []
+
+    # Crawl the given urls
     if urls_to_scrape.shape[0] > 0:
         print("Starting to crawl", len(urls_to_scrape), "urls")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as x:
-            x.map(scrape, urls_to_scrape)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+            for result in executor.map(scrape, urls_to_scrape):
+                if result is not None and len(result) > 0:
+                    domains_found.extend(de_compress(result))
+
+    return domains_found
 
 
 def start_scraper():
     global i
     # Initial array of URLs to scrape
-    urls_to_scrape = [line.rstrip('\n') for line in open('./scraper/scraping/test_domains.txt')]
+    urls_to_scrape = [line.rstrip('\n') for line in open('./scraper/scraping/domains/test_domains.txt')]
 
     print("Starting to scrape", len(urls_to_scrape), "domains")
     start_time = time.process_time()
+    end_time = time.process_time()
+    max_crawling_time_in_minutes = 90
+    already_crawled = []
 
     # Crawl each url individually
-    for url in urls_to_scrape:
-        discovered_urls = get_sitemaps_from_url(url)
-        if discovered_urls is not None:
-            crawl(discovered_urls)
-            print("Completed crawling", i, "pages for", url)
-        else:
-            print("No urls found for", url)
-        i = 0
-        delete_duplicate_keywords_from_db()
+    while len(urls_to_scrape) > 0:
+        print("Domains left", len(urls_to_scrape))
+        url = urls_to_scrape.pop()
+        if url not in already_crawled and url_is_valid(url):
+            if ((end_time - start_time) / 60.0) < max_crawling_time_in_minutes:
+                discovered_urls = get_sitemaps_from_url(url)
+                if discovered_urls is not None and len(discovered_urls.shape) > 0:
+                    new_domains = crawl(discovered_urls)  # crawl(discovered_urls)
+                    urls_to_scrape.extend(new_domains)
+                    urls_to_scrape = list(set(urls_to_scrape))
+                    print("Completed crawling", i, "pages for", url)
+                else:
+                    print("No urls found for", url)
+                i = 0
+                end_time = time.process_time()
+            else:
+                urls_to_scrape = []
+        already_crawled.append(url)
 
-    end_time = time.process_time()
     print("Scraping done in", (end_time - start_time) / 60, "minutes")
