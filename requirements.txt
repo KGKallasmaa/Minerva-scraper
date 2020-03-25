@@ -11,3 +11,5 @@ pyhash
 zlib
 dryscrape
 readability
+ciso8601
+tldextract
