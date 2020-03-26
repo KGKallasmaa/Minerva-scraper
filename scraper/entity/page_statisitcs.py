@@ -3,7 +3,7 @@ import pyhash
 from scraper.database.database import get_page_rank_by_page_id
 import readability
 
-from scraper.language.language import pre_process_with_spacy
+from scraper.entity.language import Language
 from scraper.scraping.scraper import get_domain
 from scraper.utils.utils import de_compress
 
@@ -100,7 +100,9 @@ class PageStatistics:
         return readability.getmeasures(data, lang='en')
 
     def get_words_in_headings(self, headings):
-        res = [pre_process_with_spacy(heading) for heading in headings]
+        language = Language()
+
+        res = [language.pre_process_with_spacy(heading) for heading in headings]
         res = list(set(list(itertools.chain.from_iterable(res))))
         res.sort()
         return res

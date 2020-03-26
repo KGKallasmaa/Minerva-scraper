@@ -2,9 +2,8 @@ import re
 
 from scraper.database.database import get_domain_id
 from scraper.entity.domain import Domain
+from scraper.entity.language import Language
 from scraper.entity.page import Page
-from scraper.language import language
-from urllib.parse import urlparse
 import urllib.robotparser as urobot
 import ssl
 import pyhash
@@ -117,6 +116,7 @@ def extract_content(url, soup, current_time, client):
     # Get all urls
     page.add_urls(get_urls(url, soup))
 
+    language = Language()
     word_count = language.word_count(get_text(soup))
     page.domain_id = get_domain_id(domain_obj.domain, domain_obj, current_time, client=client)
 
