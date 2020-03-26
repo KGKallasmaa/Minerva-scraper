@@ -58,22 +58,22 @@ def scrape(url):
                                                 client=client)
 
             # Update the reverse index
-            discovered_keywords = [*word_count.keys()]
+            discovered_keywords = list(word_count.keys())
             add_to_reverse_index(discovered_keywords, page_id, client)
 
             new_domains = compress_urls(page.extract_domains_linked_domains(get_domain(page.url)))
-            print("completed scraping for {}".format(url))
             i += 1
             client.close()
+            print("completed scraping for {}".format(url))
             # Get domains to scrape next
             return new_domains
         except:
             client.close()
-            print("Problem scraping {}".format(url))
+            print("Exception in adding results to the DB for: {}".format(url))
 
     else:
         client.close()
-        print("Problem scraping {}".format(url))
+        print("Problem scraping: {}".format(url))
 
     return []
 

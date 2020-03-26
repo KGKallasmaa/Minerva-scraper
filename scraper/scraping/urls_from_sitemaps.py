@@ -101,7 +101,7 @@ def get_urls_from_domain(url):
     # Flatten the array
 
     # TODO: implement.We should only crawl pages that we are allowed to
-    # todo: we should respect robots.txt. Twitter robots.txt has very good documentation. study it
+    # todo: we should respect robots.txt. Twitter robot s.txt has very good documentation. study it
     if len(urls_two_d_array) > 0:
         return np.array(reduce(lambda z, y: z + y, urls_two_d_array))
     return np.array(urls_two_d_array)

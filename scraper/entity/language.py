@@ -34,4 +34,4 @@ class Language:
     def nr_of_words_in_url(self, dict):
         return sum(dict.values())
 
-    
+
