@@ -1,10 +1,9 @@
 import itertools
-from functools import reduce
-import numpy as np
+
 import pyhash
-from scraper.database.database import get_page_rank_by_page_id
 import readability
 
+from scraper.database.database import get_page_rank_by_page_id
 from scraper.entity.language import Language
 from scraper.scraping.scraper import get_domain
 from scraper.utils.utils import de_compress, compress_urls, merge_dictionaries

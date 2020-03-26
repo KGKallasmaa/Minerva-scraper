@@ -130,7 +130,6 @@ def add_to_reverse_index(keywords, page_id, client):
     make_bulk_updates(results_from_db, page_id, client)  # todo. another thread will do that
 
 
-
 def pages_we_will_not_crawl(url_lastmod, client):
     db = client.get_database("Index")
     pages = db['pages']

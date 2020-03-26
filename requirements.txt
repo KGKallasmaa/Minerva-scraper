@@ -1,3 +1,4 @@
+requests
 pymongo
 bs4
 pymongo[srv]
@@ -13,3 +14,5 @@ readability
 ciso8601
 tldextract
 tornado
+numpy
+pytz

@@ -6,15 +6,15 @@ from collections import Counter
 nlp = spacy.load("en_core_web_sm")
 
 
-# How to download it: pip3 install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-2.2.0/en_core_web_sm-2.2.0.tar.gz
+# How to download it:
+# pip3 install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-2.2.0/en_core_web_sm-2.2.0.tar.gz
 
 
 class Language:
     def __init__(self):
-        self.am_ready = True  # dummy varible
+        self.am_ready = True  # dummy variable
 
     def pre_process_with_spacy(self, string):
-        # Tokenise
         doc = nlp(string)
 
         tokens = [token.lemma_ for token in doc if

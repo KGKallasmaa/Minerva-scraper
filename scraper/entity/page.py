@@ -23,7 +23,6 @@ class Page:
         self.heading2 = []
         self.heading3 = []
 
-        self.url_is_canonical = True
 
     def get_values_for_db(self):
         return {

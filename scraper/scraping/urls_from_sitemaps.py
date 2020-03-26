@@ -18,8 +18,7 @@ rp = urobot.RobotFileParser()
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
-def get_urls_from_xml(url,isTesting=False):
-    global j
+def get_urls_from_xml(url,is_testing=False):
     if url is None:
         return None
 
@@ -48,7 +47,7 @@ def get_urls_from_xml(url,isTesting=False):
 
     client = get_client()
     pages_not_to_crawl = []
-    if not isTesting:
+    if not is_testing:
         pages_not_to_crawl = pages_we_will_not_crawl(url_lastmod, client)
     extracted_urls = list(set(extracted_urls) - pages_not_to_crawl)
     all_urls = [compress_urls(np.array(extracted_urls))]
