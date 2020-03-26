@@ -1,11 +1,13 @@
 import itertools
+from functools import reduce
+import numpy as np
 import pyhash
 from scraper.database.database import get_page_rank_by_page_id
 import readability
 
 from scraper.entity.language import Language
 from scraper.scraping.scraper import get_domain
-from scraper.utils.utils import de_compress
+from scraper.utils.utils import de_compress, compress_urls, merge_dictionaries
 
 fp = pyhash.farm_fingerprint_64()
 
@@ -15,6 +17,7 @@ class PageStatistics:
         self.page_id = page_id
         self.update_date_UTC = current_time
         self.language = self.calculate_language_statistics(page)
+        self.named_entities = self.calculate_named_entity(page)
         self.page_rank = get_page_rank_by_page_id(self.page_id, client=client)
         self.page_load_speed = speed
         self.url_length = len(page.url)
@@ -40,6 +43,7 @@ class PageStatistics:
             "page_id": self.page_id,
             "update_date_UTC": current_time,
             "language": self.language,
+            "named_entities": self.named_entities,
             "pageRank": self.page_rank,
             "page_load_speed": self.page_load_speed,
             "url_length": self.url_length,
@@ -155,3 +159,38 @@ class PageStatistics:
 
         else:
             page_statistics.insert_one(new_page_statistics)
+
+    def calculate_named_entity(self, page):
+        language = Language()
+
+        named_entities_for_title = language.find_unique_named_entities(page.title)
+        named_entities_for_meta = language.find_unique_named_entities(page.meta)
+
+        named_entities_for_headings_2d = [language.find_unique_named_entities(head) for head in page.headings]
+        named_entities_for_headings = merge_dictionaries(named_entities_for_headings_2d)
+
+        named_entities_for_divs_2d = [language.find_unique_named_entities(div) for div in page.divs]
+        named_entities_for_divs = merge_dictionaries(named_entities_for_divs_2d)
+
+        return {
+            "title": {
+                "GPE": compress_urls(named_entities_for_title.get("GPE", None)),
+                "PERSON": compress_urls(named_entities_for_title.get("PERSON", None)),
+                "ORG": compress_urls(named_entities_for_title.get("ORG", None))
+            },
+            "meta": {
+                "GPE": compress_urls(named_entities_for_meta.get("GPE", None)),
+                "PERSON": compress_urls(named_entities_for_meta.get("PERSON", None)),
+                "ORG": compress_urls(named_entities_for_meta.get("ORG", None))
+            },
+            "headings": {
+                "GPE": compress_urls(named_entities_for_headings.get("GPE", None)),
+                "PERSON": compress_urls(named_entities_for_headings.get("PERSON", None)),
+                "ORG": compress_urls(named_entities_for_headings.get("ORG", None)),
+            },
+            "overall": {
+                "GPE": compress_urls(named_entities_for_divs.get("GPE", None)),
+                "PERSON": compress_urls(named_entities_for_divs.get("PERSON", None)),
+                "ORG": compress_urls(named_entities_for_divs.get("ORG", None))
+            }
+        }

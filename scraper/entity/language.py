@@ -11,7 +11,7 @@ nlp = spacy.load("en_core_web_sm")
 
 class Language:
     def __init__(self):
-        self.am_ready = True #dummy varible
+        self.am_ready = True  # dummy varible
 
     def pre_process_with_spacy(self, string):
         # Tokenise
@@ -24,7 +24,6 @@ class Language:
         # To lower case
         tokens = [x.lower() for x in tokens]
 
-
         return tokens
 
     def word_count(self, string):
@@ -34,4 +33,20 @@ class Language:
     def nr_of_words_in_url(self, dict):
         return sum(dict.values())
 
+    def find_unique_named_entities(self, string):
+        if string is None:
+            return {}
+        doc = nlp(string)
 
+        type_entties = {}  # entity_type(e.g. Person) and entities (e.g John, Mary, James)
+
+        for ent in doc.ents:
+            if ent.label_ in type_entties:
+                current_values = type_entties[ent.label_]
+                if ent.text not in current_values:
+                    current_values.append(ent.text)
+                type_entties[ent.label_] = current_values
+            else:
+                type_entties[ent.label_] = [ent.text]
+
+        return type_entties
