@@ -1,23 +1,26 @@
 import datetime
-import random
 import ssl
-
+import ciso8601 as ciso8601
 from pymongo import MongoClient, CursorType
-from pymongo import DeleteOne
 import numpy as np
 
-username = "admin"
-pw = "75o3eiompG4wGGVj"
+import pytz
 
-client = MongoClient(
-    "mongodb+srv://" + username + ":" + pw + "@gowizcluster0-wsbvt.mongodb.net/test?retryWrites=true&w=majority",
-    ssl_cert_reqs=ssl.CERT_NONE, connect=False)
-print("Connected to the client")
-print("Connected to the db")
+utc = pytz.UTC
 
 
-def get_page_rank_by_page_id(page_id):
-    global client
+def get_client():
+    # todo use .env
+    username = "admin"
+    pw = "75o3eiompG4wGGVj"
+
+    client = MongoClient(
+        "mongodb+srv://" + username + ":" + pw + "@gowizcluster0-wsbvt.mongodb.net/test?retryWrites=true&w=majority",
+        ssl_cert_reqs=ssl.CERT_NONE, connect=False)
+    return client
+
+
+def get_page_rank_by_page_id(page_id, client):
     db = client.get_database("Analytics")
     page_statics = db['page_statistics']
     current_analytics_data = page_statics.find_one({"_id": 0, "pageRank": 1}, {"page_id": page_id})
@@ -26,8 +29,7 @@ def get_page_rank_by_page_id(page_id):
     return 0
 
 
-def get_domain_id(domain, domain_obj, current_time):
-    global client
+def get_domain_id(domain, domain_obj, current_time, client):
     db = client.get_database("Index")
     domains = db['domains']
     current_domain_data = domains.find_one({"domain": domain})
@@ -53,45 +55,7 @@ def get_domain_id(domain, domain_obj, current_time):
     return domains.find_one({"domain": domain})["_id"]
 
 
-def add_page(page, current_time):
-    global client
-    db = client.get_database("Index")
-    new_page = page.get_values_for_db()
-    pages = db['pages']
-
-    current_fingerprint = page.get_fingerprint()
-
-    old_data = pages.find_one({"url": page.url})
-    if old_data:
-        raw_data = [old_data["url"], old_data["title"], old_data["meta"], old_data["urls"]]
-        old_fingerprint = page.get_fingerprint_from_raw_data(raw_data)
-
-        if old_fingerprint == current_fingerprint:
-            return old_data["_id"]
-        new_page['last_crawl_UTC'] = current_time
-        pages.update({'_id': old_data['_id']}, {'$set': new_page})
-        return old_data["_id"]
-    else:
-        pages.insert_one(new_page)
-    return pages.find_one({"url": page.url})["_id"]
-
-
-def add_page_statistics(page_stat, current_time):
-    global client
-    db = client.get_database("Analytics")
-    new_page_statistics = page_stat.get_values_for_db(current_time)
-    page_statistics = db['page_statistics']
-
-    old_data = page_statistics.find_one({"page_id": page_stat.page_id})
-    if old_data:
-        # todo To we need to apdate
-        page_statistics.update({'page_id': old_data['page_id']}, {'$set': new_page_statistics})
-    else:
-        page_statistics.insert_one(new_page_statistics)
-
-
-def make_bulk_updates(results_from_db, page_id):
-    global client
+def make_bulk_updates(results_from_db, page_id, client):
     db = client.get_database("Index")
 
     counter = 0
@@ -121,8 +85,7 @@ def make_bulk_updates(results_from_db, page_id):
             bulk.execute()
 
 
-def make_bulk_inserts(keywords_missing_in_the_db, page_id):
-    global client
+def make_bulk_inserts(keywords_missing_in_the_db, page_id, client):
     db = client.get_database("Index")
     counter = 0
     bulk = db['reverse_index'].initialize_unordered_bulk_op()
@@ -147,8 +110,7 @@ def make_bulk_inserts(keywords_missing_in_the_db, page_id):
             bulk.execute()
 
 
-def add_to_reverse_index(keywords, page_id):
-    global client
+def add_to_reverse_index(keywords, page_id, client):
     db = client.get_database("Index")
     # TODO: remove page from keyworrds if the page no loger has those keywords
 
@@ -164,39 +126,22 @@ def add_to_reverse_index(keywords, page_id):
 
     keywords_missing_in_the_db = set(keywords) - set(keywords_present_in_the_db)
 
-    make_bulk_inserts(keywords_missing_in_the_db, page_id)  # todo one thread will do it
-    make_bulk_updates(results_from_db, page_id)  # todo. another thread will do that
+    make_bulk_inserts(keywords_missing_in_the_db, page_id, client)  # todo one thread will do it
+    make_bulk_updates(results_from_db, page_id, client)  # todo. another thread will do that
 
 
-def get_keywords():
-    global client
+def pages_we_will_not_crawl(url_lastmod, client):
     db = client.get_database("Index")
-    keywords = []
-    for d in db['reverse_index'].find({}, {"_id": 1, "keyword": 1}).sort([('$natural', 1)]):
-        keywords.append(d)
-    return np.array(keywords)
+    pages = db['pages']
+    current_data = pages.find({"url": {"$in": list(url_lastmod.keys())}}, {"_id": 0, "url": 1, "last_crawl_UTC": 1})
 
+    pages_not_to_crawl = []
 
-def delete_duplicate_keywords_from_db():
-    global client
-    db = client.get_database("Index")
-    if random.random() < 0.02:  # we don't want the remove duplicates every time. It's too expensive
-        print("Staring to look duplicates in the db")
-
-        results_from_db = get_keywords()
-
-        keywords_present_in_the_db = [entry["keyword"] for entry in results_from_db]
-
-        duplicate_keyword_index = [i for i in range(len(keywords_present_in_the_db)) if
-                                   not i == keywords_present_in_the_db.index(keywords_present_in_the_db[i])]
-
-        if len(duplicate_keyword_index) > 0:
-            print("Found", len(duplicate_keyword_index), "duplicate topics that will be deleted")
-            duplicate_results = [results_from_db[index] for index in duplicate_keyword_index]
-
-            duplicate_ids = [entry["_id"] for entry in duplicate_results]
-
-            to_be_deleted = [DeleteOne({'_id': id}) for id in duplicate_ids]
-            db['reverse_index'].bulk_write(to_be_deleted, ordered=False)
-        else:
-            print("No duplicated found")
+    for el in current_data:
+        last_mod_date = url_lastmod.get(el["url"])
+        if last_mod_date is not None:
+            start_timestamp = ciso8601.parse_datetime(last_mod_date).replace(tzinfo=utc)
+            end_timestamp = el['last_crawl_UTC'].replace(tzinfo=utc)
+            if end_timestamp > start_timestamp:
+                pages_not_to_crawl.append(el['url'])
+    return set(pages_not_to_crawl)
