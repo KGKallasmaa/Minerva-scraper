@@ -20,19 +20,10 @@ def get_client():
     return client
 
 
-def get_page_rank_by_page_id(page_id, client):
-    db = client.get_database("Analytics")
-    page_statics = db['page_statistics']
-    current_analytics_data = page_statics.find_one({"_id": 0, "pageRank": 1}, {"page_id": page_id})
-    if current_analytics_data:
-        return current_analytics_data['pageRank']
-    return 0
-
-
 def get_domain_id(domain, domain_obj, current_time, client):
     db = client.get_database("Index")
     domains = db['domains']
-    current_domain_data = domains.find_one({"domain": domain})
+    current_domain_data = domains.find_one({"domain": domain}, {"_id": 1, "domain": 1, "last_crawl_UTC": 1,"ssl_is_present":1})
 
     if current_domain_data is not None:
         domain_data = {
@@ -75,13 +66,13 @@ def make_bulk_updates(results_from_db, page_id, client):
             counter += 1
             no_updates = False
 
-        if counter % 500 == 0:
+        if counter % 1000 == 0:
             bulk.execute()
             bulk = db['reverse_index'].initialize_unordered_bulk_op()
             counter = 0
 
     if not no_updates:
-        if counter % 500 == 0:
+        if counter % 1000 == 0:
             bulk.execute()
 
 
@@ -135,13 +126,18 @@ def pages_we_will_not_crawl(url_lastmod, client):
     pages = db['pages']
     current_data = pages.find({"url": {"$in": list(url_lastmod.keys())}}, {"_id": 0, "url": 1, "last_crawl_UTC": 1})
 
-    pages_not_to_crawl = []
+    if current_data is None:
+        return []
 
-    for el in current_data:
-        last_mod_date = url_lastmod.get(el["url"])
-        if last_mod_date is not None:
+    pages_not_to_crawl = [None] * current_data.count()
+
+    for i in range(current_data.count()):
+        last_mod_date = url_lastmod.get(current_data[i]["url"])  # this data was present in the sitemap of the pate
+        last_crawl_time = current_data[i]["last_crawl_UTC"]
+        if last_mod_date is not None and last_crawl_time is not None:
             start_timestamp = ciso8601.parse_datetime(last_mod_date).replace(tzinfo=utc)
-            end_timestamp = el['last_crawl_UTC'].replace(tzinfo=utc)
-            if end_timestamp > start_timestamp:
-                pages_not_to_crawl.append(el['url'])
-    return set(pages_not_to_crawl)
+            last_crawl_time = last_crawl_time.replace(tzinfo=utc)
+            if last_crawl_time > start_timestamp:
+                pages_not_to_crawl[i] = current_data[i]["url"]
+
+    return list(filter(None, pages_not_to_crawl))
