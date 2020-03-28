@@ -18,7 +18,7 @@ rp = urobot.RobotFileParser()
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
-def get_urls_from_xml(url,is_testing=False):
+def get_urls_from_xml(url, is_testing=False):
     if url is None:
         return None
 
@@ -49,14 +49,13 @@ def get_urls_from_xml(url,is_testing=False):
     pages_not_to_crawl = []
     if not is_testing:
         pages_not_to_crawl = pages_we_will_not_crawl(url_lastmod, client)
-    extracted_urls = list(set(extracted_urls) - pages_not_to_crawl)
+    extracted_urls = list(set(extracted_urls) - set(pages_not_to_crawl))
     all_urls = [compress_urls(np.array(extracted_urls))]
 
-    if len(to_be_crawled_urls) > 0:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-            for result in executor.map(get_urls_from_xml, to_be_crawled_urls):
-                if result is not None:
-                    all_urls.append(result)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+        for result in executor.map(get_urls_from_xml, to_be_crawled_urls):
+            if result is not None:
+                all_urls.append(result)
 
     client.close()
     return all_urls
@@ -66,6 +65,9 @@ def get_urls_from_domain(url):
     domain = get_domain(url)
 
     response = requests.get(domain + "/robots.txt")
+
+    if response.status_code != 200:
+        return np.array([])
 
     soup = BeautifulSoup(response.text, "html.parser")
     lines = soup.prettify().split('\n')
@@ -86,16 +88,16 @@ def get_urls_from_domain(url):
                 extracted_compressed_urls.extend(result)
 
     # Decompress all
-    urls_two_d_array = []
+    urls_two_d_array = [None] * len(extracted_compressed_urls)
+    for i in range(len(extracted_compressed_urls)):
+        array = extracted_compressed_urls[i]
+        if type(extracted_compressed_urls[i]) is list:
+            array = extracted_compressed_urls[i][0]
 
-    while len(extracted_compressed_urls) > 0:
-        array = extracted_compressed_urls.pop()
-        if type(array) is list:
-            array = array[0]
-        array = de_compress(array)
+        urls_two_d_array[i] = de_compress(array)
 
-        if len(array) > 0:
-            urls_two_d_array.append(array)
+    # Remove None values
+    urls_two_d_array = list(filter(None, urls_two_d_array))
 
     # Flatten the array
 
@@ -103,6 +105,7 @@ def get_urls_from_domain(url):
     # todo: we should respect robots.txt. Twitter robot s.txt has very good documentation. study it
     if len(urls_two_d_array) > 0:
         return np.array(reduce(lambda z, y: z + y, urls_two_d_array))
+
     return np.array(urls_two_d_array)
 
 
@@ -131,23 +134,22 @@ def robot_url_fetching_check(domain, urls):
     return  urls
     
     """
-    robots_url = domain+"/robots.txt"
- #   response = requests.get(robots_url, headers=headers)
+    robots_url = domain + "/robots.txt"
+    #   response = requests.get(robots_url, headers=headers)
 
-#    rp = urllib.robotparser.RobotFileParser()
-#    rp.set_url(robots_url)
- #   rp.read()
- #   rrate = rp.request_rate("*")
-  #  if rrate is not None:
-   #     print("Number of request can be crawled in ", rrate.seconds, " seconds is", rrate.requests)
-   # print("Crawl delay", rp.crawl_delay("*"))
+    #    rp = urllib.robotparser.RobotFileParser()
+    #    rp.set_url(robots_url)
+    #   rp.read()
+    #   rrate = rp.request_rate("*")
+    #  if rrate is not None:
+    #     print("Number of request can be crawled in ", rrate.seconds, " seconds is", rrate.requests)
+    # print("Crawl delay", rp.crawl_delay("*"))
 
-   # res = list(filter(lambda url: rp.can_fetch("*", url), urls))
-   # print("pages we can crawl")
-   # print(res)
+    # res = list(filter(lambda url: rp.can_fetch("*", url), urls))
+    # print("pages we can crawl")
+    # print(res)
 
     return None
-
 
 
 """
