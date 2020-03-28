@@ -47,8 +47,8 @@ def scrape(url):
     # Save results to DB
     if (page.title is not None) and (word_count is not None):
         try:
-            page_id = page.add_page(current_time=current_time,
-                                    client=client)
+            page_id = page.add_page(client=client)
+
             page_statistics = PageStatistics(page_id=page_id,
                                              current_time=current_time,
                                              page=page,
@@ -67,9 +67,9 @@ def scrape(url):
             print("completed scraping for {}".format(url))
             # Get domains to scrape next
             return new_domains
-        except:
+        except Exception as e:
             client.close()
-            print("Exception in adding results to the DB for: {}".format(url))
+            print("Exception in adding results to the DB for:{}. Message: {}".format(url, e))
 
     else:
         client.close()
@@ -114,9 +114,9 @@ def start_scraper():
                     new_domains = crawl(discovered_urls)  # crawl(discovered_urls)
                     urls_to_scrape.extend(new_domains)
                     urls_to_scrape = list(set(urls_to_scrape))
-                    print("Completed crawling {} pages for {}".format(i, len(urls_to_scrape)))
+                    print("Completed crawling {} pages for {}".format(i, url))
                 else:
-                    print("No urs found for {}".format(len(url)))
+                    print("No urls found for {}".format(len(url)))
 
                 i = 0
                 end_time = time.process_time()
@@ -124,4 +124,4 @@ def start_scraper():
                 urls_to_scrape = []
             already_crawled.append(url)
 
-    print("Scraping done in", (end_time - start_time) / 60, "minutes")
+    print("Scraping done in {} minutes".format((end_time - start_time) / 60))
