@@ -1,8 +1,11 @@
 import zlib
 from functools import reduce
 
-import tldextract
 import numpy as np
+import pyhash
+import tldextract
+
+fp = pyhash.farm_fingerprint_64()
 
 
 def get_domain(url):
@@ -46,5 +49,9 @@ def merge_dictionaries(dictionaries):
         current_value = np.unique(current_value)
         merged_results[key] = current_value
 
-
     return merged_results
+
+
+def get_fingerprint_from_raw_data(raw_data):
+    string = ''.join(map(str, raw_data))
+    return fp(string)

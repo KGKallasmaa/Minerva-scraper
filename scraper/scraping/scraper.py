@@ -67,7 +67,8 @@ def extract_content(url, soup, current_time, client):
                 divs=None,
                 headings=None,
                 current_time=current_time,
-                urls=None)
+                urls=None,
+                client=client)
 
     domain_obj = Domain(domain=get_domain(url),
                         favicon=None,

@@ -1,6 +1,9 @@
-https://monzo.com/
-https://web.cs.toronto.edu/
-https://openai.com
-https://brilliant.org/
-https://transferwise.com/
+https://monzo.com
+https://brilliant.org
+https://transferwise.com
 https://www.mozilla.org/en-US/
+https://intmath.com
+https://www.coursera.org
+https://towardsdatascience.com
+https://www.udemy.com
+https://openai.com

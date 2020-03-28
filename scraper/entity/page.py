@@ -1,28 +1,25 @@
-
-import pyhash
-
-from scraper.utils.utils import get_domain, compress_urls, de_compress
-
-fp = pyhash.farm_fingerprint_64()
+from scraper.utils.utils import get_domain, compress_urls, de_compress, get_fingerprint_from_raw_data
 
 
 class Page:
-    def __init__(self, url, title, meta, divs, headings, domain_id, current_time, urls):
+    def __init__(self, url, title, meta, divs, headings, domain_id, current_time, urls, client):
         self.url = url
         self.title = title
-        self.domain_id = domain_id
         self.meta = meta
-        self.urls = compress_urls(urls)
-        self.first_crawl_UTC = current_time
+        self.url_is_canonical = True
+
+        self.domain_id = domain_id
+
+        self.first_crawl_UTC = self.get_first_crawl_time_by_url(url, current_time, client)
         self.last_crawl_UTC = current_time
 
         self.divs = divs
         self.headings = headings
+        self.urls = compress_urls(urls)
 
         self.heading1 = []
         self.heading2 = []
         self.heading3 = []
-
 
     def get_values_for_db(self):
         return {
@@ -41,30 +38,25 @@ class Page:
         self.urls = compress_urls(list(set(current_urls)))
 
     def get_fingerprint(self):
-        raw_data = [self.url, self.title, self.meta, self.urls, self.headings]
-        return self.get_fingerprint_from_raw_data(raw_data)
+        raw_data = [self.url, self.title, self.meta, self.urls, self.urls]
+        return get_fingerprint_from_raw_data(raw_data)
 
-    def get_fingerprint_from_raw_data(self, raw_data):
-        string = ''.join(map(str, raw_data))
-        return fp(string)
-
-    def add_page(self, current_time, client):
+    def add_page(self, client):
 
         db = client.get_database("Index")
         new_page = self.get_values_for_db()
         pages = db['pages']
 
-        current_fingerprint = self.get_fingerprint()
-
         old_data = pages.find_one({"url": self.url})
 
         if old_data:
             raw_data = [old_data["url"], old_data["title"], old_data["meta"], old_data["urls"]]
-            old_fingerprint = self.get_fingerprint_from_raw_data(raw_data)
+            old_fingerprint = get_fingerprint_from_raw_data(raw_data)
+            current_fingerprint = self.get_fingerprint()
 
             if old_fingerprint == current_fingerprint:
                 return old_data["_id"]
-            new_page['last_crawl_UTC'] = current_time
+
             pages.update({'_id': old_data['_id']}, {'$set': new_page})
             return old_data["_id"]
         else:
@@ -91,3 +83,14 @@ class Page:
             return []
 
         return list(set(domains))
+
+    def get_first_crawl_time_by_url(self, url, current_time, client):
+
+        db = client.get_database("Index")
+        pages = db['pages']
+
+        current_page = pages.find_one({"_id": 0, "first_crawl_UTC": 1}, {"url": url})
+
+        if current_page:
+            return current_page.get('first_crawl_UTC')
+        return current_time
