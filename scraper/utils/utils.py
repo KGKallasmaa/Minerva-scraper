@@ -1,8 +1,9 @@
 import zlib
 from functools import reduce
 
-import numpy as np
+from tornado import concurrent
 import pyhash
+import numpy as np
 import tldextract
 
 fp = pyhash.farm_fingerprint_64()
@@ -30,28 +31,35 @@ def de_compress(string):
     return zlib.decompress(string).decode("utf-8").split(",")
 
 
-def merge_dictionaries(dictionaries):
-    merged_results = {}
-
-    # Results as 2d array
-    for dic in dictionaries:
-        for key, value in dic.items():
-            if key in merged_results:
-                current_value = merged_results.get(key)
-                current_value.append(value)
-                merged_results[key] = current_value
-            else:
-                merged_results[key] = [value]
-
-    for key, value in merged_results.items():
-        current_value = merged_results.get(key)
-        current_value = np.array(reduce(lambda z, y: z + y, current_value))
-        current_value = np.unique(current_value)
-        merged_results[key] = current_value
-
-    return merged_results
-
-
 def get_fingerprint_from_raw_data(raw_data):
     string = ''.join(map(str, raw_data))
     return fp(string)
+
+
+def execute_tasks(tasks):
+    if len(tasks) > 0:
+        update = lambda task: task.execute()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            executor.map(update, tasks)
+
+
+def unite_mixed_lengh_2d_array(arrays):
+    # Decompress all
+    urls_two_d_array = [None] * len(arrays)
+    for i in range(len(arrays)):
+        array = arrays[i]
+        if type(arrays[i]) is list:
+            array = arrays[i][0]
+
+        urls_two_d_array[i] = de_compress(array)
+
+    # Remove None values
+    urls_two_d_array = list(filter(None, urls_two_d_array))
+
+    # Flatten the array
+
+    if len(urls_two_d_array) > 0:
+        return np.array(reduce(lambda z, y: z + y, urls_two_d_array))
+
+    return np.array(urls_two_d_array)

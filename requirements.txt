@@ -16,3 +16,5 @@ tldextract
 tornado
 numpy
 pytz
+html5lib
+tqdm

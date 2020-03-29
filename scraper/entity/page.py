@@ -1,4 +1,5 @@
 from scraper.utils.utils import get_domain, compress_urls, de_compress, get_fingerprint_from_raw_data
+from pymongo import InsertOne, DeleteOne, ReplaceOne, UpdateOne
 
 
 class Page:
@@ -47,7 +48,7 @@ class Page:
         new_page = self.get_values_for_db()
         pages = db['pages']
 
-        old_data = pages.find_one({"url": self.url})
+        old_data = pages.find_one({"url": self.url}, {"url": 1, "_id": 0, "meta": 1, "urls": 1})
 
         if old_data:
             raw_data = [old_data["url"], old_data["title"], old_data["meta"], old_data["urls"]]
@@ -56,12 +57,14 @@ class Page:
 
             if old_fingerprint == current_fingerprint:
                 return old_data["_id"]
+            # TODO: move it to a seprete insert file
+            pages.bulk_write([UpdateOne({'_id': old_data['_id']}, {'$set': new_page})], ordered=False)
 
-            pages.update({'_id': old_data['_id']}, {'$set': new_page})
             return old_data["_id"]
         else:
-            pages.insert_one(new_page)
-        return pages.find_one({"url": self.url})["_id"]
+            pages.bulk_write([InsertOne(new_page)], ordered=False)
+
+        return pages.find_one({"url": self.url}, {"_id": 1})["_id"]
 
     def extract_domains_linked_domains(self, domain):
         # Returns urls that are not from the same domain
@@ -89,7 +92,7 @@ class Page:
         db = client.get_database("Index")
         pages = db['pages']
 
-        current_page = pages.find_one({"_id": 0, "first_crawl_UTC": 1}, {"url": url})
+        current_page = pages.find_one({"url": url}, {"_id": 0, "first_crawl_UTC": 1})
 
         if current_page:
             return current_page.get('first_crawl_UTC')

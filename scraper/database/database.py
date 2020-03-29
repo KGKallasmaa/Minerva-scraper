@@ -1,10 +1,11 @@
-import datetime
 import ssl
+from datetime import datetime, timedelta
 import ciso8601 as ciso8601
-from pymongo import MongoClient, CursorType
-import numpy as np
+from pymongo import MongoClient
 
 import pytz
+
+from scraper.utils.utils import execute_tasks
 
 utc = pytz.UTC
 
@@ -23,14 +24,15 @@ def get_client():
 def get_domain_id(domain, domain_obj, current_time, client):
     db = client.get_database("Index")
     domains = db['domains']
-    current_domain_data = domains.find_one({"domain": domain}, {"_id": 1, "domain": 1, "last_crawl_UTC": 1,"ssl_is_present":1})
+    current_domain_data = domains.find_one({"domain": domain},
+                                           {"_id": 1, "domain": 1, "last_crawl_UTC": 1, "ssl_is_present": 1})
 
     if current_domain_data is not None:
         domain_data = {
             "last_crawl_UTC": current_time,
         }
         # We should not update to often
-        one_hour_ago = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
+        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
         if current_domain_data["last_crawl_UTC"] > one_hour_ago:
             return current_domain_data["_id"]
 
@@ -46,70 +48,79 @@ def get_domain_id(domain, domain_obj, current_time, client):
     return domains.find_one({"domain": domain})["_id"]
 
 
-def make_bulk_updates(results_from_db, page_id, client):
+async def make_bulk_updates(results_from_db, page_id, client):
+    if len(results_from_db) < 1:
+        return None
     db = client.get_database("Index")
 
     counter = 0
     bulk = db['reverse_index'].initialize_unordered_bulk_op()
-    no_updates = True
+    tasks = []
+
     for present_entries in results_from_db:
         # process in bulk
         keyword = present_entries["keyword"]
         current_pages = present_entries["pages"]
 
-        if page_id not in current_pages:
+        index = dict((y, x) for x, y in enumerate(current_pages))
+        page_id_present = index.get(page_id, None)
+
+        if page_id_present is not None:
             current_pages.append(page_id)
             updates = {
-                "pages": list(current_pages)
+                "pages": current_pages
             }
-            bulk.find({'keyword': keyword}).update({'$set': updates})
+            bulk.find_one({'keyword': keyword}).update({'$set': updates})
             counter += 1
-            no_updates = False
 
         if counter % 1000 == 0:
-            bulk.execute()
+            tasks.append(bulk)
             bulk = db['reverse_index'].initialize_unordered_bulk_op()
             counter = 0
 
-    if not no_updates:
-        if counter % 1000 == 0:
-            bulk.execute()
+    if counter % 1000 != 0:
+        tasks.append(bulk)
+
+    execute_tasks(tasks)
 
 
 def make_bulk_inserts(keywords_missing_in_the_db, page_id, client):
+    if len(keywords_missing_in_the_db) < 1:
+        return None
     db = client.get_database("Index")
     counter = 0
     bulk = db['reverse_index'].initialize_unordered_bulk_op()
-    no_updates = True
+
+    tasks = []
+
     for missing_keyword in keywords_missing_in_the_db:
-        # process in bulk
         new_entry = {
             "keyword": missing_keyword,
             "pages": [page_id],
         }
         bulk.insert(new_entry)
         counter += 1
-        no_updates = False
 
-        if counter % 500 == 0:
-            bulk.execute()
+        if counter % 1000 == 0:
+            tasks.append(bulk)
             bulk = db['reverse_index'].initialize_unordered_bulk_op()
             counter = 0
 
-    if not no_updates:
-        if counter % 500 == 0:
-            bulk.execute()
+    if counter % 1000 != 0:
+        tasks.append(bulk)
+
+    execute_tasks(tasks)
 
 
 def add_to_reverse_index(keywords, page_id, client):
     db = client.get_database("Index")
-    # TODO: remove page from keyworrds if the page no loger has those keywords
 
     keywords_document = db['reverse_index']
 
-    results_from_db = np.array(list(
-        keywords_document.find({"keyword": {"$in": keywords}}, {"_id": 0, "keyword": 1, "pages": 1},
-                               cursor_type=CursorType.EXHAUST)))
+    results_from_db = []
+    for d in keywords_document.find({"keyword": {"$in": keywords}}, {"_id": 0, "keyword": 1, "pages": 1}).sort(
+            [('$natural', 1)]):
+        results_from_db.append(d)
 
     # What keywords are missing?
 
@@ -124,7 +135,13 @@ def add_to_reverse_index(keywords, page_id, client):
 def pages_we_will_not_crawl(url_lastmod, client):
     db = client.get_database("Index")
     pages = db['pages']
-    current_data = pages.find({"url": {"$in": list(url_lastmod.keys())}}, {"_id": 0, "url": 1, "last_crawl_UTC": 1})
+
+    # No page is crawled more then once per hour
+    one_hour_from_now = datetime.utcnow() + timedelta(hours=1)
+
+    current_data = pages.find({"url": {"$in": list(url_lastmod.keys())},
+                               "last_crawl_UTC": {"$lt": one_hour_from_now}
+                               }, {"_id": 0, "url": 1, "last_crawl_UTC": 1}).sort([('$natural', 1)])
 
     if current_data is None:
         return []
@@ -132,12 +149,14 @@ def pages_we_will_not_crawl(url_lastmod, client):
     pages_not_to_crawl = [None] * current_data.count()
 
     for i in range(current_data.count()):
-        last_mod_date = url_lastmod.get(current_data[i]["url"])  # this data was present in the sitemap of the pate
+        current_url = current_data[i]["url"]
+
+        last_mod_date = url_lastmod.get(current_url)  # this data was present in the sitemap of the pate
         last_crawl_time = current_data[i]["last_crawl_UTC"]
         if last_mod_date is not None and last_crawl_time is not None:
             start_timestamp = ciso8601.parse_datetime(last_mod_date).replace(tzinfo=utc)
             last_crawl_time = last_crawl_time.replace(tzinfo=utc)
             if last_crawl_time > start_timestamp:
-                pages_not_to_crawl[i] = current_data[i]["url"]
+                pages_not_to_crawl[i] = current_url
 
     return list(filter(None, pages_not_to_crawl))

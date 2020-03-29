@@ -4,7 +4,7 @@ import readability
 
 from scraper.entity.language import Language
 from scraper.scraping.scraper import get_domain
-from scraper.utils.utils import de_compress, compress_urls, merge_dictionaries, get_fingerprint_from_raw_data
+from scraper.utils.utils import de_compress, compress_urls, get_fingerprint_from_raw_data
 
 
 class PageStatistics:
@@ -15,9 +15,7 @@ class PageStatistics:
         self.language = self.calculate_language_statistics(page)
         self.named_entities = self.calculate_named_entity(page)
 
-        self.page_rank = self.get_page_rank_by_page_id(self.page_id, client=client)
-        self.hub_score = self.get_hub_score_by_page_id(self.page_id, client=client)
-        self.authority_score = self.get_authority_score_by_page_id(self.page_id, client=client)
+        self.page_rank, self.hub_score, self.authority_score = self.get_scores_by_page_id(self.page_id, client=client)
 
         self.page_load_speed = speed
         self.url_length = len(page.url)
@@ -163,7 +161,9 @@ class PageStatistics:
         new_page_statistics = self.get_values_for_db(current_time)
         page_statistics = db['page_statistics']
 
-        old_data = page_statistics.find_one({"page_id": self.page_id})
+        old_data = page_statistics.find_one({"page_id": self.page_id},
+                                            {"_id": 0, "language": 1, "url_length": 1, "words_in_headings": 1,
+                                             "nr_links_from_GEO": 1, "nr_links_to_GEO": 1})
         if old_data:
             old_fingerprint_data = [old_data['language'], old_data['url_length'],
                                     old_data['words_in_headings']['heading1'],
@@ -179,9 +179,10 @@ class PageStatistics:
             new_fingerprint = self.get_fingerprint()
 
             if old_fingerprint_data != new_fingerprint:
-                page_statistics.update({'page_id': old_data['page_id']}, {'$set': new_page_statistics})
-
+                # TODO: move it to a seprete update file
+                page_statistics.update_one({'page_id': old_data['page_id']}, {'$set': new_page_statistics})
         else:
+            # TODO: move it to a seprete insert file
             page_statistics.insert_one(new_page_statistics)
 
     def calculate_named_entity(self, page):
@@ -189,12 +190,8 @@ class PageStatistics:
 
         named_entities_for_title = language.find_unique_named_entities(page.title)
         named_entities_for_meta = language.find_unique_named_entities(page.meta)
-
-        named_entities_for_headings_2d = [language.find_unique_named_entities(head) for head in page.headings]
-        named_entities_for_headings = merge_dictionaries(named_entities_for_headings_2d)
-
-        named_entities_for_divs_2d = [language.find_unique_named_entities(div) for div in page.divs]
-        named_entities_for_divs = merge_dictionaries(named_entities_for_divs_2d)
+        named_entities_for_headings = language.find_unique_named_entities(" ".join(page.headings))
+        named_entities_for_divs = language.find_unique_named_entities(" ".join(page.divs))
 
         return {
             "title": {
@@ -219,29 +216,19 @@ class PageStatistics:
             }
         }
 
-    def get_page_rank_by_page_id(self, page_id, client):
-        db = client.get_database("Analytics")
-        page_statics = db['page_statistics']
-
-        current_analytics_data = page_statics.find_one({"_id": 0, "scores": 1}, {"page_id": page_id})
-        if current_analytics_data:
-            return current_analytics_data['scores'].get('pageRank')
-        return 0
-
-    def get_hub_score_by_page_id(self, page_id, client):
-        db = client.get_database("Analytics")
-        page_statics = db['page_statistics']
-
-        current_analytics_data = page_statics.find_one({"_id": 0, "scores": 1}, {"page_id": page_id})
-        if current_analytics_data:
-            return current_analytics_data['scores'].get('hub_score')
-        return 0
-
-    def get_authority_score_by_page_id(self, page_id, client):
+    def get_scores_by_page_id(self, page_id, client):
         db = client.get_database("Analytics")
         page_statics = db['page_statistics']
 
         current_analytics_data = page_statics.find_one({"_id": 0, "cores": 1}, {"page_id": page_id})
+
+        page_rank = 0
+        hub_score = 0
+        authority_score = 0
+
         if current_analytics_data:
-            return current_analytics_data['scores'].get('authority_score')
-        return 0
+            page_rank = current_analytics_data['scores'].get('pageRank')
+            hub_score = current_analytics_data['scores'].get('hub_score')
+            authority_score = current_analytics_data['scores'].get('authority_score')
+
+        return page_rank, hub_score, authority_score

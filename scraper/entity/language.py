@@ -38,15 +38,20 @@ class Language:
             return {}
         doc = nlp(string)
 
-        type_entties = {}  # entity_type(e.g. Person) and entities (e.g John, Mary, James)
+        type_entities = {}  # entity_type(e.g. Person) and entities (e.g John, Mary, James)
+
+        suitable_entity_labels = ["GPE", "PERSON", "ORG"]  # we only want some types
 
         for ent in doc.ents:
-            if ent.label_ in type_entties:
-                current_values = type_entties[ent.label_]
-                if ent.text not in current_values:
+            if ent.label_ in suitable_entity_labels:
+                if ent.label_ in type_entities:
+                    current_values = type_entities[ent.label_]
                     current_values.append(ent.text)
-                type_entties[ent.label_] = current_values
-            else:
-                type_entties[ent.label_] = [ent.text]
+                    type_entities[ent.label_] = current_values
+                else:
+                    type_entities[ent.label_] = [ent.text]
 
-        return type_entties
+        for key, value in type_entities.items():
+            type_entities[key] = list(set(value))
+
+        return type_entities
