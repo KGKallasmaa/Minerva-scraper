@@ -1,23 +1,20 @@
 import datetime
+import time
 
 import requests
-from tqdm import tqdm
-import time
+from bs4 import BeautifulSoup
 from bs4.dammit import EncodingDetector
 from tornado import concurrent
+from tqdm import tqdm
+
 from scraper.database.database import add_to_reverse_index, get_client
 from scraper.entity.page_statisitcs import PageStatistics
 from scraper.scraping.scraper import extract_content, url_is_valid
+from scraper.scraping.urls_from_sitemaps import get_urls_from_domain
+from scraper.utils.utils import get_domain
 
 # TODO: problem scraping pages that are not pure html
 # TODO: can't scrape PDFs
-
-
-from scraper.scraping.urls_from_sitemaps import get_urls_from_domain
-from bs4 import BeautifulSoup
-
-# MAIN FUNCTIONALITY
-from scraper.utils.utils import get_domain, compress_urls, de_compress, unite_mixed_lengh_2d_array
 
 i = 0
 headers = {
@@ -28,10 +25,10 @@ headers = {
 current_milli_time = lambda: int(round(time.time() * 1000))
 
 
-def scrape(input):
+def scrape(url, client):
     global i
     global headers
-    url, client = input
+
     current_time = datetime.datetime.utcnow()
 
     response_time_ms = current_milli_time()
@@ -54,8 +51,7 @@ def scrape(input):
 
     # TODO: html5lib is super, super, super, slow. fix this somehow
 
-    soup = BeautifulSoup(response.content, 'html5lib',
-                         from_encoding=encoding)  # BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(response.content, 'html5lib',from_encoding=encoding)
 
     response_time_ms = current_milli_time() - response_time_ms
     # Extract the page info
@@ -79,9 +75,8 @@ def scrape(input):
             discovered_keywords = list(word_count.keys())
             add_to_reverse_index(discovered_keywords, page_id, client)
 
-            new_domains = compress_urls(page.extract_domains_linked_domains(get_domain(page.url)))
+            new_domains = page.extract_domains_linked_domains(get_domain(page.url))
             i += 1
-            # Printing is slow     print("completed scraping for {}".format(url))
             # Get domains to scrape next
             return new_domains
         except Exception as e:
@@ -92,23 +87,30 @@ def scrape(input):
     return None
 
 
-def crawl(urls_to_scrape):
+def crawl(urls_to_scrape,domain):
     domains_found = []
     client = get_client()
 
     # Crawl the given urls
     if urls_to_scrape.shape[0] > 0:
-        print("Starting to crawl {} urls".format(len(urls_to_scrape)))
+        urls_to_scrape.sort()
+        print("Starting to crawl {} urls for domain: {}".format(len(urls_to_scrape),domain))
         total = len(urls_to_scrape)
         pbar = tqdm(total=total)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-            for result in executor.map(scrape, [(u, client) for u in urls_to_scrape]):
-                if result is not None and len(result) > 0:
-                    domains_found.extend(result)
-                    pbar.update(1)
-                else:
-                    pbar.update(1)
+            results = {executor.submit(scrape, url, client): url for url in urls_to_scrape}
+            for future in concurrent.futures.as_completed(results):
+                url = results[future]
+                try:
+                    data = future.result()
+                    if data is not None and len(data) > 0:
+                        domains_found.extend(data)
+                        pbar.update(1)
+                    else:
+                        pbar.update(1)
+                except Exception as exc:
+                    print('%r generated an exception: %s' % (url, exc))
 
         pbar.close()
     client.close()
@@ -123,18 +125,18 @@ def start_scraper():
     print("Starting to scrape {} domains".format(len(urls_to_scrape)))
     start_time = time.process_time()
     end_time = time.process_time()
-    max_crawling_time_in_minutes = 30
+    max_crawling_time_in_minutes = 180
     already_crawled = []
 
     # Crawl each url individually
     while len(urls_to_scrape) > 0:
-        print("Domains left {}".format(len(urls_to_scrape)))
         url = urls_to_scrape.pop()
         if url not in already_crawled and url_is_valid(url):
+            print("Domains left {}".format(len(urls_to_scrape)))
             if ((end_time - start_time) / 60.0) < max_crawling_time_in_minutes:
                 discovered_urls = get_urls_from_domain(url)
                 if discovered_urls is not None and len(discovered_urls.shape) > 0:
-                    new_domains = crawl(discovered_urls)  # crawl(discovered_urls)
+                    new_domains = crawl(discovered_urls,url)  # crawl(discovered_urls)
                     urls_to_scrape.extend(new_domains)
                     print("Completed crawling {} pages for {}".format(i, url))
                 else:
