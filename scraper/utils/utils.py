@@ -1,10 +1,8 @@
 import zlib
-from functools import reduce
 
-from tornado import concurrent
 import pyhash
-import numpy as np
 import tldextract
+from tornado import concurrent
 
 fp = pyhash.farm_fingerprint_64()
 
@@ -40,26 +38,5 @@ def execute_tasks(tasks):
     if len(tasks) > 0:
         update = lambda task: task.execute()
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            executor.map(update, tasks)
-
-
-def unite_mixed_lengh_2d_array(arrays):
-    # Decompress all
-    urls_two_d_array = [None] * len(arrays)
-    for i in range(len(arrays)):
-        array = arrays[i]
-        if type(arrays[i]) is list:
-            array = arrays[i][0]
-
-        urls_two_d_array[i] = de_compress(array)
-
-    # Remove None values
-    urls_two_d_array = list(filter(None, urls_two_d_array))
-
-    # Flatten the array
-
-    if len(urls_two_d_array) > 0:
-        return np.array(reduce(lambda z, y: z + y, urls_two_d_array))
-
-    return np.array(urls_two_d_array)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+            results = {executor.submit(update, task): task for task in tasks}
