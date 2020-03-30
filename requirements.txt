@@ -1,15 +1,12 @@
 requests
 pymongo
 bs4
-pymongo[srv]
 dnspython
 nltk
 textblob
-fast-pagerank
 spacy
 datetime
 pyhash
-zlib
 readability
 ciso8601
 tldextract
