@@ -11,9 +11,7 @@ class PageStatistics:
     def __init__(self, page_id, current_time, page, speed, client):
         self.page_id = page_id
         self.update_date_UTC = current_time
-
         self.language = self.calculate_language_statistics(page)
-        self.named_entities = self.calculate_named_entity(page)
 
         self.page_rank, self.hub_score, self.authority_score = self.get_scores_by_page_id(self.page_id, client=client)
 
@@ -36,6 +34,9 @@ class PageStatistics:
         self.nr_of_links_to_org = 0
 
         self.get_nr_of_links_to_gov_org_edu(page)
+
+        # TODO: get data from database. Maybe there's no need to calculate new nameed entities, because all the data would be the same
+        self.named_entities = self.calculate_named_entity(page,client)
 
     def get_values_for_db(self, current_time):
         return {
@@ -163,7 +164,9 @@ class PageStatistics:
 
         old_data = page_statistics.find_one({"page_id": self.page_id},
                                             {"_id": 0, "language": 1, "url_length": 1, "words_in_headings": 1,
+                                             "page_id": 1,
                                              "nr_links_from_GEO": 1, "nr_links_to_GEO": 1})
+
         if old_data:
             old_fingerprint_data = [old_data['language'], old_data['url_length'],
                                     old_data['words_in_headings']['heading1'],
@@ -185,12 +188,40 @@ class PageStatistics:
             # TODO: move it to a seprete insert file
             page_statistics.insert_one(new_page_statistics)
 
-    def calculate_named_entity(self, page):
+    def calculate_named_entity(self, page, client):
+
+        db = client.get_database("Analytics")
+        page_statistics = db['page_statistics']
+
+        old_data = page_statistics.find_one({"page_id": self.page_id},
+                                            {"_id": 0, "language": 1, "url_length": 1, "words_in_headings": 1,
+                                             "page_id": 1,
+                                             "nr_links_from_GEO": 1, "nr_links_to_GEO": 1,
+                                             "named_entities": 1})
+
+        if old_data:
+            old_fingerprint_data = [old_data['language'], old_data['url_length'],
+                                    old_data['words_in_headings']['heading1'],
+                                    old_data['words_in_headings']['heading2'],
+                                    old_data['words_in_headings']['heading3'],
+                                    old_data['nr_links_from_GEO']['from_gov'],
+                                    old_data['nr_links_from_GEO']['from_edu'],
+                                    old_data['nr_links_from_GEO']['from_org'],
+                                    old_data['nr_links_to_GEO']['to_gov'],
+                                    old_data['nr_links_to_GEO']['to_edu'],
+                                    old_data['nr_links_to_GEO']['to_org']]
+
+            new_fingerprint = self.get_fingerprint()
+
+            if old_fingerprint_data == new_fingerprint:
+                return old_data['named_entities']
+
         language = Language()
 
         named_entities_for_title = language.find_unique_named_entities(page.title)
         named_entities_for_meta = language.find_unique_named_entities(page.meta)
         named_entities_for_headings = language.find_unique_named_entities(" ".join(page.headings))
+
         named_entities_for_divs = language.find_unique_named_entities(" ".join(page.divs))
 
         return {
