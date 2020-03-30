@@ -1,16 +1,15 @@
-from functools import reduce
+import asyncio
+import ssl
+import urllib.robotparser as urobot
+
+import numpy as np
 import requests
 from bs4 import BeautifulSoup
-import urllib.robotparser as urobot
-import ssl
-import numpy as np
 from tornado import concurrent
-import asyncio
 from tornado.platform.asyncio import AnyThreadEventLoopPolicy
 
 from scraper.database.database import pages_we_will_not_crawl, get_client
 from scraper.scraping.scraper import get_domain
-from scraper.utils.utils import compress_urls, unite_mixed_lengh_2d_array
 
 asyncio.set_event_loop_policy(AnyThreadEventLoopPolicy())
 
@@ -24,10 +23,8 @@ def get_urls_from_xml(url, is_testing=False):
 
     response = requests.get(url)
     if response.status_code != 200:
-        response.close()
         return None
-    response.close()
-    soup = BeautifulSoup(response.text, "xml")
+    soup = BeautifulSoup(response.text, "html.parser")  #soup = BeautifulSoup(response.text, "lxml-xml")
     urls = np.array([link.get_text() for link in soup.find_all('loc')])
 
     extracted_urls = list(filter(lambda url: ".xml" not in url, urls))
@@ -37,13 +34,14 @@ def get_urls_from_xml(url, is_testing=False):
     url_lastmod = {}
 
     for el in soup.find_all("url"):
+
         last_mod = [link.get_text() for link in el.find_all('lastmod')]
         last_mod = last_mod[0] if len(last_mod) > 0 else None
 
         new_url = [link.get_text() for link in el.find_all('loc')]
         new_url = new_url[0] if len(new_url) > 0 else None
 
-        if new_url:
+        if new_url and new_url in extracted_urls:
             url_lastmod[new_url] = last_mod
 
     client = get_client()
@@ -52,15 +50,20 @@ def get_urls_from_xml(url, is_testing=False):
         pages_not_to_crawl = pages_we_will_not_crawl(url_lastmod=url_lastmod,
                                                      client=client)
     extracted_urls = list(set(extracted_urls) - set(pages_not_to_crawl))
-    all_urls = [compress_urls(np.array(extracted_urls))]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-        for result in executor.map(get_urls_from_xml, to_be_crawled_urls):
-            if result is not None:
-                all_urls.append(result)
+    if len(to_be_crawled_urls) > 0:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+            results = {executor.submit(get_urls_from_xml, url): url for url in to_be_crawled_urls}
+            for future in concurrent.futures.as_completed(results):
+                try:
+                    data = future.result()
+                    if data is not None and len(data) > 0:
+                        extracted_urls.extend(data)
+                except:
+                    pass
 
     client.close()
-    return all_urls
+    return extracted_urls
 
 
 def get_urls_from_domain(url):
@@ -70,34 +73,39 @@ def get_urls_from_domain(url):
         response = requests.get(domain + "/robots.txt")
         if response.status_code != 200:
             return np.array([])
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        lines = soup.prettify().split('\n')
+
+        sitemaps = list(filter(lambda line: "Sitemap:" in line, lines))
+        sitemaps = list(map(lambda line: line.replace('Sitemap: ', ''), sitemaps))
+
+        # Trying a common setup
+        if len(sitemaps) == 0:
+            sitemaps.append(domain + "/sitemap.xml")
+
+        # Fetch all URLS
+        extracted_urls = []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+            results = {executor.submit(get_urls_from_xml, url): url for url in sitemaps}
+            for future in concurrent.futures.as_completed(results):
+                try:
+                    data = future.result()
+                    if data is not None and len(data) > 0:
+                        extracted_urls.extend(data)
+                except:
+                    pass
+
+
+        # TODO: implement.We should only crawl pages that we are allowed to
+        # Todo: we should respect robots.txt. Twitter robot s.txt has very good documentation. study it
+
+        return np.array(extracted_urls)
+
     except Exception as e:
         print("Problem contacting the domain: {}. Message: {}".format(url, e))
         return np.array([])
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    lines = soup.prettify().split('\n')
-
-    sitemaps = list(filter(lambda line: "Sitemap:" in line, lines))
-    sitemaps = list(map(lambda line: line.replace('Sitemap: ', ''), sitemaps))
-
-    # Trying a common setup
-    if len(sitemaps) == 0:
-        sitemaps.append(domain + "/sitemap.xml")
-
-    # Fetch all URLS
-    extracted_compressed_urls = []
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-        for result in executor.map(get_urls_from_xml, sitemaps):
-            print(result)
-            if result is not None:
-                print(extracted_compressed_urls)
-                extracted_compressed_urls.append(result)
-
-    # TODO: implement.We should only crawl pages that we are allowed to
-    # Todo: we should respect robots.txt. Twitter robot s.txt has very good documentation. study it
-
-    return unite_mixed_lengh_2d_array(extracted_compressed_urls)
 
 
 def robot_url_fetching_check(domain, urls):

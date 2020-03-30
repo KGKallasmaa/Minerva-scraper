@@ -1,5 +1,6 @@
+from pymongo import InsertOne, UpdateOne
+
 from scraper.utils.utils import get_domain, compress_urls, de_compress, get_fingerprint_from_raw_data
-from pymongo import InsertOne, DeleteOne, ReplaceOne, UpdateOne
 
 
 class Page:
@@ -48,7 +49,7 @@ class Page:
         new_page = self.get_values_for_db()
         pages = db['pages']
 
-        old_data = pages.find_one({"url": self.url}, {"url": 1, "_id": 0, "meta": 1, "urls": 1})
+        old_data = pages.find_one({"url": self.url}, {"url": 1, "_id": 1, "title": 1, "meta": 1, "urls": 1})
 
         if old_data:
             raw_data = [old_data["url"], old_data["title"], old_data["meta"], old_data["urls"]]

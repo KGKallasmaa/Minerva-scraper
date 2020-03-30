@@ -1,13 +1,13 @@
 import re
+import ssl
+import urllib.robotparser as urobot
+
+import pyhash
 
 from scraper.database.database import get_domain_id
 from scraper.entity.domain import Domain
 from scraper.entity.language import Language
 from scraper.entity.page import Page
-import urllib.robotparser as urobot
-import ssl
-import pyhash
-
 from scraper.utils.utils import get_domain
 
 rp = urobot.RobotFileParser()
@@ -70,6 +70,9 @@ def extract_content(url, soup, current_time, client):
                 urls=None,
                 client=client)
 
+    if title is None:
+        return {}, page
+
     domain_obj = Domain(domain=get_domain(url),
                         favicon=None,
                         current_time=current_time)
@@ -78,8 +81,7 @@ def extract_content(url, soup, current_time, client):
     meta = [meta['content'] for meta in soup.findAll(attrs={"name": re.compile(r"description", re.I)})]
     if meta:
         page.meta = meta[0]
-    else:
-        page.meta = ""
+
 
     # Get favicon
     domain_obj.favicon = get_favicon(url, soup)

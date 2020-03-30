@@ -1,9 +1,9 @@
 import ssl
 from datetime import datetime, timedelta
-import ciso8601 as ciso8601
-from pymongo import MongoClient
 
+import ciso8601 as ciso8601
 import pytz
+from pymongo import MongoClient
 
 from scraper.utils.utils import execute_tasks
 
@@ -48,7 +48,7 @@ def get_domain_id(domain, domain_obj, current_time, client):
     return domains.find_one({"domain": domain})["_id"]
 
 
-async def make_bulk_updates(results_from_db, page_id, client):
+def make_bulk_updates(results_from_db, page_id, client):
     if len(results_from_db) < 1:
         return None
     db = client.get_database("Index")
@@ -70,7 +70,7 @@ async def make_bulk_updates(results_from_db, page_id, client):
             updates = {
                 "pages": current_pages
             }
-            bulk.find_one({'keyword': keyword}).update({'$set': updates})
+            bulk.find({'keyword': keyword}).update({'$set': updates})
             counter += 1
 
         if counter % 1000 == 0:
@@ -139,16 +139,18 @@ def pages_we_will_not_crawl(url_lastmod, client):
     # No page is crawled more then once per hour
     one_hour_from_now = datetime.utcnow() + timedelta(hours=1)
 
-    current_data = pages.find({"url": {"$in": list(url_lastmod.keys())},
-                               "last_crawl_UTC": {"$lt": one_hour_from_now}
-                               }, {"_id": 0, "url": 1, "last_crawl_UTC": 1}).sort([('$natural', 1)])
+    current_data = []
 
-    if current_data is None:
+    for e in pages.find({"url": {"$in": list(url_lastmod.keys())}, "last_crawl_UTC": {"$lt": one_hour_from_now}},
+                        {"_id": 0, "url": 1, "last_crawl_UTC": 1}).sort([('$natural', 1)]):
+        current_data.append(e)
+
+    if len(current_data) < 1:
         return []
 
-    pages_not_to_crawl = [None] * current_data.count()
+    pages_not_to_crawl = [None] * len(current_data)
 
-    for i in range(current_data.count()):
+    for i in range(len(current_data)):
         current_url = current_data[i]["url"]
 
         last_mod_date = url_lastmod.get(current_url)  # this data was present in the sitemap of the pate
