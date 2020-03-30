@@ -1,9 +1,12 @@
 # TODO: support other languages
 
-import spacy
+
 from collections import Counter
 
-nlp = spacy.load("en_core_web_sm")
+import spacy
+
+nlp = spacy.load("en_core_web_sm",
+                 disable=["tagger", "parser", "textcat", "sentencizer"])
 
 
 # How to download it:
@@ -19,6 +22,7 @@ class Language:
 
         tokens = [token.lemma_ for token in doc if
                   (token.is_stop is False and token.is_punct is False and token.is_space is False)]
+
         # Remove single characters.
         tokens = [token for token in tokens if len(token) > 1]
         # To lower case
@@ -36,20 +40,28 @@ class Language:
     def find_unique_named_entities(self, string):
         if string is None:
             return {}
-        doc = nlp(string)
+
+        strings = [string]
+
+        n = 100000
+        if len(string) > n:
+            strings = [string[i:i + n] for i in range(0, len(string), n)]
 
         type_entities = {}  # entity_type(e.g. Person) and entities (e.g John, Mary, James)
 
         suitable_entity_labels = ["GPE", "PERSON", "ORG"]  # we only want some types
 
-        for ent in doc.ents:
-            if ent.label_ in suitable_entity_labels:
-                if ent.label_ in type_entities:
-                    current_values = type_entities[ent.label_]
-                    current_values.append(ent.text)
-                    type_entities[ent.label_] = current_values
-                else:
-                    type_entities[ent.label_] = [ent.text]
+        for s in strings:
+            doc = nlp(s)
+
+            for ent in doc.ents:
+                if ent.label_ in suitable_entity_labels:
+                    if ent.label_ in type_entities:
+                        current_values = type_entities[ent.label_]
+                        current_values.append(ent.text)
+                        type_entities[ent.label_] = current_values
+                    else:
+                        type_entities[ent.label_] = [ent.text]
 
         for key, value in type_entities.items():
             type_entities[key] = list(set(value))
