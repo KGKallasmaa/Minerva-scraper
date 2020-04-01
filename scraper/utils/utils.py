@@ -1,9 +1,8 @@
 import zlib
-from functools import reduce
 
-import numpy as np
 import pyhash
 import tldextract
+from tornado import concurrent
 
 fp = pyhash.farm_fingerprint_64()
 
@@ -30,28 +29,14 @@ def de_compress(string):
     return zlib.decompress(string).decode("utf-8").split(",")
 
 
-def merge_dictionaries(dictionaries):
-    merged_results = {}
-
-    # Results as 2d array
-    for dic in dictionaries:
-        for key, value in dic.items():
-            if key in merged_results:
-                current_value = merged_results.get(key)
-                current_value.append(value)
-                merged_results[key] = current_value
-            else:
-                merged_results[key] = [value]
-
-    for key, value in merged_results.items():
-        current_value = merged_results.get(key)
-        current_value = np.array(reduce(lambda z, y: z + y, current_value))
-        current_value = np.unique(current_value)
-        merged_results[key] = current_value
-
-    return merged_results
-
-
 def get_fingerprint_from_raw_data(raw_data):
     string = ''.join(map(str, raw_data))
     return fp(string)
+
+
+def execute_tasks(tasks):
+    if len(tasks) > 0:
+        update = lambda task: task.execute()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+            results = {executor.submit(update, task): task for task in tasks}
