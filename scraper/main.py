@@ -19,6 +19,7 @@ from scraper.utils.utils import get_domain
 i = 0
 headers = {
     'User-Agent': '*',
+    'Accept-Language': 'en-US,en;',
     'From': 'karl.gustav1789@gmail.com'
 }
 
@@ -51,7 +52,7 @@ def scrape(url, client):
 
     # TODO: html5lib is super, super, super, slow. fix this somehow
 
-    soup = BeautifulSoup(response.content, 'html5lib',from_encoding=encoding)
+    soup = BeautifulSoup(response.content, 'html5lib', from_encoding=encoding)
 
     response_time_ms = current_milli_time() - response_time_ms
     # Extract the page info
@@ -87,14 +88,14 @@ def scrape(url, client):
     return None
 
 
-def crawl(urls_to_scrape,domain):
+def crawl(urls_to_scrape, domain):
     domains_found = []
     client = get_client()
 
     # Crawl the given urls
     if urls_to_scrape.shape[0] > 0:
         urls_to_scrape.sort()
-        print("Starting to crawl {} urls for domain: {}".format(len(urls_to_scrape),domain))
+        print("Starting to crawl {} urls for domain: {}".format(len(urls_to_scrape), domain))
         total = len(urls_to_scrape)
         pbar = tqdm(total=total)
 
@@ -106,12 +107,10 @@ def crawl(urls_to_scrape,domain):
                     data = future.result()
                     if data is not None and len(data) > 0:
                         domains_found.extend(data)
-                        pbar.update(1)
-                    else:
-                        pbar.update(1)
+                        domains_found = list(set(domains_found))
+                    pbar.update(1)
                 except Exception as exc:
                     print('%r generated an exception: %s' % (url, exc))
-
         pbar.close()
     client.close()
     return list(set(domains_found))
@@ -136,7 +135,7 @@ def start_scraper():
             if ((end_time - start_time) / 60.0) < max_crawling_time_in_minutes:
                 discovered_urls = get_urls_from_domain(url)
                 if discovered_urls is not None and len(discovered_urls.shape) > 0:
-                    new_domains = crawl(discovered_urls,url)  # crawl(discovered_urls)
+                    new_domains = crawl(discovered_urls, url)  # crawl(discovered_urls)
                     urls_to_scrape.extend(new_domains)
                     print("Completed crawling {} pages for {}".format(i, url))
                 else:
