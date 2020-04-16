@@ -73,6 +73,14 @@ def extract_content(url, soup, current_time, client):
     if title is None:
         return {}, page
 
+    # Can we index this site?
+    can_not_crawl = [meta['content'] for meta in soup.findAll(attrs={"name": re.compile(r"robots", re.I)})]
+    if len(can_not_crawl) > 0:
+        no_crawl_description = ['noindex', "noindex, nofollow", "nofollow"]
+        for e in can_not_crawl:
+            if e in no_crawl_description:
+                return {}, page
+
     domain_obj = Domain(domain=get_domain(url),
                         favicon=None,
                         current_time=current_time)
@@ -81,7 +89,6 @@ def extract_content(url, soup, current_time, client):
     meta = [meta['content'] for meta in soup.findAll(attrs={"name": re.compile(r"description", re.I)})]
     if meta:
         page.meta = meta[0]
-
 
     # Get favicon
     domain_obj.favicon = get_favicon(url, soup)
